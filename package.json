@@ -1,0 +1,98 @@
+{
+  "name": "advanced-data-extractor",
+  "version": "1.0.0",
+  "description": "Professional web scraping desktop application with Chrome extension functionality",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --dir || echo Build completed with warnings",
+    "build:win": "electron-builder --win nsis",
+    "publish": "electron-builder --publish=always"
+  },
+  "keywords": [
+    "electron",
+    "web-scraping",
+    "data-extraction",
+    "automation"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^38.1.1",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "electron-updater": "^6.6.2",
+    "puppeteer-core": "^24.22.0",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "electron-reload": "^2.0.0-alpha.1"
+  },
+  "build": {
+    "appId": "com.yourcompany.advanced-data-extractor",
+    "productName": "Advanced Data Extractor",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "forceCodeSigning": false,
+    "publish": {
+      "provider": "github",
+      "owner": "your-github-username",
+      "repo": "advanced-data-extractor"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "verifyUpdateCodeSignature": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "extraMetadata": {
+      "main": "src/main.js"
+    }
+  }
+}

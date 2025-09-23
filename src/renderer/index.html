@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Data Extractor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Title Bar -->
+    <div class="title-bar">
+        <div class="title-bar-left">
+        </div>
+        <div class="title-bar-center">
+            <div class="url-bar">
+                <input type="url" id="urlInput" placeholder="Enter URL to scrape..." />
+                <button id="navigateBtn">Go</button>
+            </div>
+        </div>
+        <div class="title-bar-right">
+            <div class="connection-status" id="connectionStatus">Ready</div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Navigation Panel -->
+        <div class="navigation-panel">
+            <div class="panel-header">
+                <h3>Extraction Tools</h3>
+            </div>
+            
+            <!-- Mode Selection -->
+            <div class="mode-section">
+                <label class="section-label">Extraction Mode</label>
+                <div class="mode-buttons">
+                    <button class="mode-btn active" data-mode="manual">
+                        <span class="mode-icon">✋</span>
+                        <span>Manual</span>
+                    </button>
+                    <button class="mode-btn" data-mode="template">
+                        <span class="mode-icon">📋</span>
+                        <span>Template</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Field Selection -->
+            <div class="field-section">
+                <label class="section-label">Data Fields</label>
+                <div class="field-buttons">
+                    <button class="field-btn" data-field="title">
+                        <span class="field-icon">📝</span>
+                        <span>Title</span>
+                    </button>
+                    <button class="field-btn" data-field="description">
+                        <span class="field-icon">📄</span>
+                        <span>Description</span>
+                    </button>
+                    <button class="field-btn" data-field="image">
+                        <span class="field-icon">🖼️</span>
+                        <span>Image</span>
+                    </button>
+                    <button class="field-btn" data-field="price">
+                        <span class="field-icon">💰</span>
+                        <span>Price</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Template Info (hidden by default) -->
+            <div class="template-info" id="templateInfo" style="display: none;">
+                <label class="section-label">Template Status</label>
+                <div class="template-fields">
+                    <div class="template-field" data-field="title">
+                        <span>Title</span>
+                        <span class="status">Not set</span>
+                    </div>
+                    <div class="template-field" data-field="description">
+                        <span>Description</span>
+                        <span class="status">Not set</span>
+                    </div>
+                    <div class="template-field" data-field="image">
+                        <span>Image</span>
+                        <span class="status">Not set</span>
+                    </div>
+                    <div class="template-field" data-field="price">
+                        <span>Price</span>
+                        <span class="status">Not set</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-section">
+                <button class="action-btn secondary" id="findSimilarBtn" style="display: none;">
+                    <span class="btn-icon">🔍</span>
+                    <span>Find Similar</span>
+                </button>
+                <button class="action-btn secondary" id="clearBtn">
+                    <span class="btn-icon">🗑️</span>
+                    <span>Clear All</span>
+                </button>
+                <button class="action-btn primary" id="exportBtn">
+                    <span class="btn-icon">📤</span>
+                    <span>Export Data</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Browser View Container -->
+            <div class="browser-container">
+                <div class="browser-header">
+                    <div class="browser-controls">
+                        <button id="backBtn" class="browser-btn" title="Back">←</button>
+                        <button id="forwardBtn" class="browser-btn" title="Forward">→</button>
+                        <button id="refreshBtn" class="browser-btn" title="Refresh">⟳</button>
+                    </div>
+                    <div class="browser-url" id="browserUrl">No page loaded</div>
+                    <div class="browser-actions">
+                        <button id="extractModeBtn" class="browser-btn active">Extract Mode</button>
+                    </div>
+                </div>
+                <div class="browser-view" id="browserView">
+                    <webview id="webview" 
+                             src="about:blank" 
+                             style="width: 100%; height: 100%;"
+                             nodeintegration="false"
+                             webpreferences="contextIsolation=false"
+                             partition="persist:webview">
+                    </webview>
+                    <!-- AI Extraction Loading (positioned within browser view) -->
+                    <div class="ai-loading-overlay" id="aiLoadingOverlay" style="display: none;">
+                        <!-- Dynamic content will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Panel -->
+        <div class="data-panel">
+            <div class="panel-header">
+                <h3>Extracted Data</h3>
+                <div class="data-stats">
+                    <span class="data-count" id="dataCount">0</span>
+                    <span class="data-label">items</span>
+                </div>
+            </div>
+
+            <div class="data-controls">
+                <button class="control-btn" id="addItemBtn">
+                    <span>+ Add Item</span>
+                </button>
+                <button class="control-btn" id="finishItemBtn" style="display: none;">
+                    <span>✅ Finish Current</span>
+                </button>
+                <button class="control-btn" id="verifyAllBtn">
+                    <span>Verify All</span>
+                </button>
+                <button class="control-btn highlight-toggle" id="toggleHighlightsBtn" style="display: none;">
+                    <span>Hide Highlights</span>
+                </button>
+            </div>
+            
+            <div class="filling-status" id="fillingStatus" style="display: none;">
+                <div class="status-summary">
+                    <span class="status-item">📝 <span id="emptyCount">0</span> Empty</span>
+                    <span class="status-item">🎯 <span id="fillingCount">0</span> Filling</span>
+                    <span class="status-item">✅ <span id="completedCount">0</span> Done</span>
+                </div>
+            </div>
+
+            <div class="data-list" id="dataList">
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div class="empty-text">No data extracted yet</div>
+                    <div class="empty-subtext">Select a field and click on page elements to start extracting</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="status-left">
+            <span id="statusMessage">Ready to extract data</span>
+        </div>
+        <div class="status-right">
+            <span id="extractionStats">0 items extracted</span>
+            <span class="separator">•</span>
+            <span id="appVersion">v1.0.0</span>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Processing...</div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal-overlay" id="modalOverlay" style="display: none;">
+        <div class="modal" id="exportModal">
+            <div class="modal-header">
+                <h3>Export Data</h3>
+                <button class="modal-close" id="modalClose">×</button>
+            </div>
+            <div class="modal-content">
+                <div class="export-options">
+                    <label class="export-option">
+                        <input type="radio" name="exportFormat" value="json" checked>
+                        <span>JSON Format</span>
+                        <small>Structured data with all fields</small>
+                    </label>
+                    <label class="export-option">
+                        <input type="radio" name="exportFormat" value="csv">
+                        <span>CSV Format</span>
+                        <small>Spreadsheet compatible format</small>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn secondary" id="cancelExport">Cancel</button>
+                <button class="btn primary" id="confirmExport">Export</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

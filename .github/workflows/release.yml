@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.1)'
+        required: true
+        type: string
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest  
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Get version from tag or input
+      id: version
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Update package.json version
+      shell: bash
+      run: |
+        npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+    
+    - name: Build and publish for Windows
+      if: matrix.platform == 'win'
+      run: |
+        npm run build:win
+        npm run publish
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build and publish for macOS
+      if: matrix.platform == 'mac'
+      run: |
+        npx electron-builder --mac --publish=always
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CSC_IDENTITY_AUTO_DISCOVERY: false  # Skip code signing for now
+    
+    - name: Build and publish for Linux
+      if: matrix.platform == 'linux'
+      run: |
+        npx electron-builder --linux --publish=always
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload release artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-${{ matrix.platform }}
+        path: dist/
+        retention-days: 30
+
+  create-release:
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        body: |
+          ## What's Changed
+          
+          * Auto-generated release for version ${{ github.ref_name }}
+          * Download the appropriate installer for your platform below
+          
+          ## Installation
+          
+          ### Windows
+          - Download `Advanced-Data-Extractor-Setup-*.exe`
+          - Run the installer
+          
+          ### macOS
+          - Download `Advanced-Data-Extractor-*.dmg`
+          - Open and drag to Applications
+          
+          ### Linux
+          - Download `Advanced-Data-Extractor-*.AppImage`
+          - Make executable and run
+          
+          ## Auto-Updates
+          
+          Once installed, the app will automatically check for and install future updates.
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
