@@ -47,8 +47,8 @@
     "forceCodeSigning": false,
     "publish": {
       "provider": "github",
-      "owner": "your-github-username",
-      "repo": "advanced-data-extractor"
+      "owner": "iamranawaqas100",
+      "repo": "manual-extrator"
     },
     "win": {
       "target": [
@@ -61,7 +61,8 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": false,
+      "signAndEditExecutable": false
     },
     "mac": {
       "target": [

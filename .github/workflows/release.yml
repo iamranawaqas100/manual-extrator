@@ -16,17 +16,7 @@ env:
 
 jobs:
   release:
-    runs-on: ${{ matrix.os }}
-    
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-          - os: macos-latest  
-            platform: mac
-          - os: ubuntu-latest
-            platform: linux
+    runs-on: windows-latest
     
     steps:
     - name: Checkout code
@@ -57,32 +47,16 @@ jobs:
         npm version ${{ steps.version.outputs.version }} --no-git-tag-version
     
     - name: Build and publish for Windows
-      if: matrix.platform == 'win'
       run: |
         npm run build:win
-        npm run publish
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Build and publish for macOS
-      if: matrix.platform == 'mac'
-      run: |
-        npx electron-builder --mac --publish=always
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        CSC_IDENTITY_AUTO_DISCOVERY: false  # Skip code signing for now
-    
-    - name: Build and publish for Linux
-      if: matrix.platform == 'linux'
-      run: |
-        npx electron-builder --linux --publish=always
+        npx electron-builder --win --publish=always
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Upload release artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: release-${{ matrix.platform }}
+        name: release-windows
         path: dist/
         retention-days: 30
 
@@ -104,21 +78,13 @@ jobs:
           ## What's Changed
           
           * Auto-generated release for version ${{ github.ref_name }}
-          * Download the appropriate installer for your platform below
+          * Windows installer available for download below
           
           ## Installation
           
           ### Windows
           - Download `Advanced-Data-Extractor-Setup-*.exe`
           - Run the installer
-          
-          ### macOS
-          - Download `Advanced-Data-Extractor-*.dmg`
-          - Open and drag to Applications
-          
-          ### Linux
-          - Download `Advanced-Data-Extractor-*.AppImage`
-          - Make executable and run
           
           ## Auto-Updates
           
