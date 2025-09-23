@@ -41,10 +41,20 @@ jobs:
           echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
         fi
     
-    - name: Update package.json version
+    - name: Update package.json version (if needed)
       shell: bash
       run: |
-        npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+        NEW_VERSION="${{ steps.version.outputs.version }}"
+        echo "Current version: $CURRENT_VERSION"
+        echo "Target version: $NEW_VERSION"
+        
+        if [ "$CURRENT_VERSION" != "$NEW_VERSION" ]; then
+          echo "Updating version from $CURRENT_VERSION to $NEW_VERSION"
+          npm version $NEW_VERSION --no-git-tag-version
+        else
+          echo "Version already matches target version $NEW_VERSION, skipping update"
+        fi
     
     - name: Build and publish for Windows
       run: |
