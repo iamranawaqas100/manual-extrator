@@ -323,10 +323,11 @@ function createMenu() {
         {
           label: 'About',
           click: () => {
+            const packageInfo = require('../package.json')
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'About Advanced Data Extractor',
-              message: 'Advanced Data Extractor v1.0.0',
+              message: `Advanced Data Extractor v${packageInfo.version}`,
               detail: 'Professional web scraping tool with Chrome extension functionality.\n\nBuilt with Electron, React, and modern web technologies.'
             })
           }
