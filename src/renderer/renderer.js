@@ -756,6 +756,11 @@ class DataExtractorApp {
         // Listen for protocol extract events
         window.electronAPI.onProtocolExtract((event, data) => {
             console.log('🌐 Received protocol extract request:', data)
+            console.log('🕵️ Event object:', event)
+            console.log('🕵️ Data keys:', Object.keys(data))
+            console.log('🕵️ Action:', data.action)
+            console.log('🕵️ URL:', data.url)
+            console.log('🕵️ BypassAuth:', data.bypassAuth)
             this.handleProtocolExtract(data)
         })
     }
@@ -818,11 +823,13 @@ class DataExtractorApp {
                     // Set URL and show loading state
                     urlInput.value = url
                     console.log('📝 Set URL input to:', url)
+                    console.log('📝 URL input element value after setting:', urlInput.value)
                     this.updateStatus('Loading website from protocol...')
                     
                     // Navigate to the URL automatically (skip dialog)
+                    console.log('🧭 Starting navigation with skipDialog=true')
                     await this.navigateToUrl(true)
-                    console.log('🧭 Navigation completed')
+                    console.log('🧭 Navigation completed successfully')
                     
                     // Wait for webview to be ready
                     const webview = document.getElementById('webview')

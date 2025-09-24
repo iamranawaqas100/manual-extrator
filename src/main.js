@@ -878,6 +878,8 @@ if (!gotTheLock) {
 
 function handleProtocolUrl(url) {
   console.log('🔗 Processing protocol URL:', url)
+  console.log('🕵️ Protocol URL type:', typeof url)
+  console.log('🕵️ Protocol URL length:', url.length)
   
   if (!mainWindow || mainWindow.isDestroyed()) {
     console.log('❌ Main window not available, creating new window')
@@ -887,16 +889,24 @@ function handleProtocolUrl(url) {
     return
   }
   
+  console.log('✅ Main window available, proceeding with protocol handling')
+  
   try {
     // Parse URL: dataextractor://extract?url=https://example.com
+    console.log('🔍 Attempting to parse URL...')
     const urlObj = new URL(url)
+    console.log('✅ URL parsed successfully')
+    console.log('🔍 Protocol:', urlObj.protocol)
+    console.log('🔍 Hostname:', urlObj.hostname)
+    console.log('🔍 Search params:', urlObj.searchParams.toString())
     
     if (urlObj.protocol === 'dataextractor:') {
       const action = urlObj.hostname // extract, open, etc.
       const targetUrl = urlObj.searchParams.get('url')
       
       console.log('🎯 Action:', action)
-      console.log('🌐 Target URL:', targetUrl)
+      console.log('🌐 Target URL (raw):', targetUrl)
+      console.log('🌐 Target URL (decoded):', targetUrl ? decodeURIComponent(targetUrl) : 'null')
       
       if (action === 'extract' && targetUrl) {
         // Focus and show the window first
@@ -910,16 +920,20 @@ function handleProtocolUrl(url) {
         }
         
         // Send the URL to the renderer process immediately
+        const decodedUrl = decodeURIComponent(targetUrl)
+        console.log('📤 Sending to renderer process...')
+        console.log('📤 Decoded URL for renderer:', decodedUrl)
+        
         mainWindow.webContents.send('protocol-extract', {
           action: 'extract',
-          url: decodeURIComponent(targetUrl),
+          url: decodedUrl,
           bypassAuth: true // Flag to bypass authentication
         })
         
         // Show a notification in the update log
-        mainWindow.webContents.send('update-log', `🌐 Opened from website: ${targetUrl}`)
+        mainWindow.webContents.send('update-log', `🌐 Opened from website: ${decodedUrl}`)
         
-        console.log('✅ Protocol URL processed successfully')
+        console.log('✅ Protocol URL processed and sent to renderer successfully')
       }
     }
   } catch (error) {
