@@ -44,7 +44,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
   onDownloadProgress: (callback) => ipcRenderer.on('download-progress', callback),
   onUpdateReady: (callback) => ipcRenderer.on('update-ready', callback),
-  onUpdateLog: (callback) => ipcRenderer.on('update-log', callback)
+  onUpdateLog: (callback) => ipcRenderer.on('update-log', callback),
+
+  // Protocol handling
+  onProtocolExtract: (callback) => ipcRenderer.on('protocol-extract', callback)
 })
 
 // Listen for browser messages and forward them

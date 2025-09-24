@@ -823,5 +823,68 @@ ipcMain.handle('install-update', async () => {
   }
 })
 
-// Handle protocol for deep linking (optional)
-app.setAsDefaultProtocolClient('advanced-data-extractor')
+// Handle protocol for deep linking
+app.setAsDefaultProtocolClient('dataextractor')
+
+// Handle the protocol URL when app is already running
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  console.log('📱 Protocol URL received:', url)
+  handleProtocolUrl(url)
+})
+
+// Handle protocol URL when app is not running (Windows)
+app.on('second-instance', (event, commandLine, workingDirectory) => {
+  // Someone tried to run a second instance, focus our window instead
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+    
+    // Check for protocol URL in command line
+    const protocolUrl = commandLine.find(arg => arg.startsWith('dataextractor://'))
+    if (protocolUrl) {
+      console.log('📱 Protocol URL from second instance:', protocolUrl)
+      handleProtocolUrl(protocolUrl)
+    }
+  }
+})
+
+function handleProtocolUrl(url) {
+  console.log('🔗 Processing protocol URL:', url)
+  
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.log('❌ Main window not available')
+    return
+  }
+  
+  try {
+    // Parse URL: dataextractor://extract?url=https://example.com
+    const urlObj = new URL(url)
+    
+    if (urlObj.protocol === 'dataextractor:') {
+      const action = urlObj.hostname // extract, open, etc.
+      const targetUrl = urlObj.searchParams.get('url')
+      
+      console.log('🎯 Action:', action)
+      console.log('🌐 Target URL:', targetUrl)
+      
+      if (action === 'extract' && targetUrl) {
+        // Send the URL to the renderer process
+        mainWindow.webContents.send('protocol-extract', {
+          action: 'extract',
+          url: decodeURIComponent(targetUrl)
+        })
+        
+        // Show a notification in the update log
+        mainWindow.webContents.send('update-log', `🌐 Opened from website: ${targetUrl}`)
+        
+        // Focus the window
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error parsing protocol URL:', error)
+    mainWindow.webContents.send('update-log', `❌ Invalid URL format: ${url}`)
+  }
+}

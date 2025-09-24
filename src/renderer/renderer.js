@@ -50,6 +50,9 @@ class DataExtractorApp {
         
         // Set up update log listener
         this.setupUpdateLogListener()
+        
+        // Set up protocol handling
+        this.setupProtocolHandling()
     }
     
     checkAuth() {
@@ -734,6 +737,46 @@ class DataExtractorApp {
                 // Reset button state
                 extractModeBtn.classList.remove('active')
                 extractModeBtn.textContent = 'Extract Mode'
+            }
+        }
+    }
+
+    setupProtocolHandling() {
+        // Listen for protocol extract events
+        window.electronAPI.onProtocolExtract((event, data) => {
+            console.log('🌐 Received protocol extract request:', data)
+            this.handleProtocolExtract(data)
+        })
+    }
+
+    async handleProtocolExtract(data) {
+        const { action, url } = data
+        
+        if (action === 'extract' && url) {
+            console.log('🎯 Handling protocol extract for URL:', url)
+            
+            // Show notification
+            this.showUpdateLog(`🌐 Opening URL from website: ${url}`)
+            
+            // Navigate to the URL
+            const urlInput = document.getElementById('urlInput')
+            if (urlInput) {
+                urlInput.value = url
+                
+                // Navigate to the URL automatically
+                await this.navigateToUrl()
+                
+                // Enable extraction mode automatically
+                setTimeout(() => {
+                    const extractModeBtn = document.getElementById('extractModeBtn')
+                    if (extractModeBtn && !extractModeBtn.classList.contains('active')) {
+                        this.toggleExtractionMode()
+                    }
+                }, 2000) // Wait 2 seconds for page to load
+                
+                // Show helpful message
+                this.updateStatus(`Ready to extract data from: ${url}`)
+                this.showUpdateLog('🎯 Extraction mode enabled - select a field to start extracting')
             }
         }
     }
