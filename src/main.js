@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session, BrowserView } = require('electron')
 const { autoUpdater } = require('electron-updater')
+const { updateElectronApp } = require('update-electron-app')
 const path = require('path')
 const fs = require('fs')
 const sqlite3 = require('sqlite3').verbose()
@@ -192,11 +193,19 @@ function createWindow() {
     // Initialize WebSocket connection for extraction logs
     initializeWebSocket()
     
-    // Check for updates (only in production)
+    // Check for updates (only in production) - Professional Implementation
     if (!process.env.NODE_ENV || process.env.NODE_ENV === 'production') {
+      // Use the official Electron update module for GitHub releases
+      updateElectronApp({
+        repo: 'iamranawaqas100/manual-extrator',
+        updateInterval: '1 hour',
+        logger: console
+      })
+      
+      // Also keep the manual check as backup
       setTimeout(() => {
         checkForUpdates()
-      }, 3000) // Wait 3 seconds after app starts
+      }, 3000)
     }
   })
 
