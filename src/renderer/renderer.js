@@ -750,34 +750,65 @@ class DataExtractorApp {
     }
 
     async handleProtocolExtract(data) {
-        const { action, url } = data
+        const { action, url, bypassAuth } = data
         
         if (action === 'extract' && url) {
             console.log('🎯 Handling protocol extract for URL:', url)
             
+            // If bypassAuth is true, bypass authentication check
+            if (bypassAuth) {
+                console.log('🔓 Bypassing authentication for protocol URL')
+                // Skip auth check and proceed directly
+                this.isAuthenticated = true
+                
+                // Hide login page if visible
+                const loginContainer = document.getElementById('loginContainer')
+                const appContainer = document.getElementById('appContainer')
+                if (loginContainer && appContainer) {
+                    loginContainer.style.display = 'none'
+                    appContainer.style.display = 'block'
+                }
+            }
+            
             // Show notification
             this.showUpdateLog(`🌐 Opening URL from website: ${url}`)
             
-            // Navigate to the URL
-            const urlInput = document.getElementById('urlInput')
-            if (urlInput) {
-                urlInput.value = url
-                
-                // Navigate to the URL automatically
-                await this.navigateToUrl()
-                
-                // Enable extraction mode automatically
-                setTimeout(() => {
-                    const extractModeBtn = document.getElementById('extractModeBtn')
-                    if (extractModeBtn && !extractModeBtn.classList.contains('active')) {
-                        this.toggleExtractionMode()
+            // Wait a moment for UI to be ready
+            setTimeout(async () => {
+                // Navigate to the URL
+                const urlInput = document.getElementById('urlInput')
+                if (urlInput) {
+                    urlInput.value = url
+                    console.log('📝 Set URL input to:', url)
+                    
+                    try {
+                        // Navigate to the URL automatically
+                        await this.navigateToUrl()
+                        console.log('🧭 Navigation completed')
+                        
+                        // Enable extraction mode automatically after page loads
+                        setTimeout(() => {
+                            const extractModeBtn = document.getElementById('extractModeBtn')
+                            if (extractModeBtn && !extractModeBtn.classList.contains('active')) {
+                                console.log('🎯 Enabling extraction mode')
+                                this.toggleExtractionMode()
+                            }
+                        }, 3000) // Wait 3 seconds for page to fully load
+                        
+                        // Show helpful message
+                        this.updateStatus(`Ready to extract data from: ${url}`)
+                        this.showUpdateLog('🎯 Extraction mode will be enabled automatically')
+                        
+                    } catch (error) {
+                        console.error('❌ Navigation failed:', error)
+                        this.showUpdateLog(`❌ Failed to navigate to: ${url}`)
+                        this.updateStatus(`Error loading: ${url}`)
                     }
-                }, 2000) // Wait 2 seconds for page to load
-                
-                // Show helpful message
-                this.updateStatus(`Ready to extract data from: ${url}`)
-                this.showUpdateLog('🎯 Extraction mode enabled - select a field to start extracting')
-            }
+                } else {
+                    console.error('❌ URL input not found')
+                    this.showUpdateLog('❌ URL input field not found')
+                }
+            }, bypassAuth ? 1000 : 100) // Wait longer if bypassing auth
         }
     }
 

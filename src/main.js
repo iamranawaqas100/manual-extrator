@@ -841,34 +841,49 @@ ipcMain.handle('install-update', async () => {
 // Handle protocol for deep linking
 app.setAsDefaultProtocolClient('dataextractor')
 
-// Handle the protocol URL when app is already running
-app.on('open-url', (event, url) => {
-  event.preventDefault()
-  console.log('📱 Protocol URL received:', url)
-  handleProtocolUrl(url)
-})
+// Prevent multiple instances and handle protocol URLs
+const gotTheLock = app.requestSingleInstanceLock()
 
-// Handle protocol URL when app is not running (Windows)
-app.on('second-instance', (event, commandLine, workingDirectory) => {
-  // Someone tried to run a second instance, focus our window instead
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.focus()
+if (!gotTheLock) {
+  // Another instance is already running, quit this one
+  console.log('🚫 Another instance is running, quitting...')
+  app.quit()
+} else {
+  // Handle protocol URL when app is already running (macOS)
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    console.log('📱 Protocol URL received (open-url):', url)
+    handleProtocolUrl(url)
+  })
+
+  // Handle protocol URL when someone tries to run a second instance (Windows/Linux)
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, focus our window instead
+    console.log('📱 Second instance detected, focusing existing window')
     
-    // Check for protocol URL in command line
-    const protocolUrl = commandLine.find(arg => arg.startsWith('dataextractor://'))
-    if (protocolUrl) {
-      console.log('📱 Protocol URL from second instance:', protocolUrl)
-      handleProtocolUrl(protocolUrl)
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+      mainWindow.show()
+      
+      // Check for protocol URL in command line
+      const protocolUrl = commandLine.find(arg => arg.startsWith('dataextractor://'))
+      if (protocolUrl) {
+        console.log('📱 Protocol URL from second instance:', protocolUrl)
+        handleProtocolUrl(protocolUrl)
+      }
     }
-  }
-})
+  })
+}
 
 function handleProtocolUrl(url) {
   console.log('🔗 Processing protocol URL:', url)
   
   if (!mainWindow || mainWindow.isDestroyed()) {
-    console.log('❌ Main window not available')
+    console.log('❌ Main window not available, creating new window')
+    createWindow()
+    // Wait for window to be ready, then retry
+    setTimeout(() => handleProtocolUrl(url), 1000)
     return
   }
   
@@ -884,22 +899,33 @@ function handleProtocolUrl(url) {
       console.log('🌐 Target URL:', targetUrl)
       
       if (action === 'extract' && targetUrl) {
-        // Send the URL to the renderer process
-        mainWindow.webContents.send('protocol-extract', {
+        // Focus and show the window first
+        mainWindow.show()
+        mainWindow.focus()
+        
+        // Store protocol data for use after auth
+        global.pendingProtocolData = {
           action: 'extract',
           url: decodeURIComponent(targetUrl)
+        }
+        
+        // Send the URL to the renderer process immediately
+        mainWindow.webContents.send('protocol-extract', {
+          action: 'extract',
+          url: decodeURIComponent(targetUrl),
+          bypassAuth: true // Flag to bypass authentication
         })
         
         // Show a notification in the update log
         mainWindow.webContents.send('update-log', `🌐 Opened from website: ${targetUrl}`)
         
-        // Focus the window
-        mainWindow.show()
-        mainWindow.focus()
+        console.log('✅ Protocol URL processed successfully')
       }
     }
   } catch (error) {
     console.error('❌ Error parsing protocol URL:', error)
-    mainWindow.webContents.send('update-log', `❌ Invalid URL format: ${url}`)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-log', `❌ Invalid URL format: ${url}`)
+    }
   }
 }
