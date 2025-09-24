@@ -137,22 +137,42 @@ class DataExtractorApp {
         })
 
         // Extract Mode button
-        document.getElementById('extractModeBtn').addEventListener('click', () => {
-            this.toggleExtractionMode()
-        })
+        const extractModeBtn = document.getElementById('extractModeBtn')
+        if (extractModeBtn) {
+            extractModeBtn.addEventListener('click', () => {
+                this.toggleExtractionMode()
+            })
+        } else {
+            console.warn('⚠️ extractModeBtn element not found in DOM')
+        }
 
         // Action buttons
-        document.getElementById('findSimilarBtn').addEventListener('click', () => {
-            this.findSimilar()
-        })
+        const findSimilarBtn = document.getElementById('findSimilarBtn')
+        if (findSimilarBtn) {
+            findSimilarBtn.addEventListener('click', () => {
+                this.findSimilar()
+            })
+        } else {
+            console.warn('⚠️ findSimilarBtn element not found in DOM')
+        }
         
-        document.getElementById('clearBtn').addEventListener('click', () => {
-            this.clearAll()
-        })
+        const clearBtn = document.getElementById('clearBtn')
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                this.clearAll()
+            })
+        } else {
+            console.warn('⚠️ clearBtn element not found in DOM')
+        }
         
-        document.getElementById('exportBtn').addEventListener('click', () => {
-            this.showExportModal()
-        })
+        const exportBtn = document.getElementById('exportBtn')
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => {
+                this.showExportModal()
+            })
+        } else {
+            console.warn('⚠️ exportBtn element not found in DOM')
+        }
 
         // Data controls
         document.getElementById('addItemBtn').addEventListener('click', () => {
