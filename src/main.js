@@ -615,11 +615,26 @@ ipcMain.handle('show-extraction-dialog', async () => {
   return result.response === 0 ? 'ai' : 'manual'
 })
 
+// Handle protocol URL at startup (Windows)
+function handleStartupProtocol() {
+  const protocolArg = process.argv.find(arg => arg.startsWith('dataextractor://'))
+  if (protocolArg) {
+    console.log('📱 Startup protocol URL:', protocolArg)
+    // Wait for app to be ready, then handle the URL
+    setTimeout(() => {
+      handleProtocolUrl(protocolArg)
+    }, 2000)
+  }
+}
+
 // App event handlers
 app.whenReady().then(() => {
   createDatabase()
   createWindow()
   createMenu()
+  
+  // Handle protocol URL from startup
+  handleStartupProtocol()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
