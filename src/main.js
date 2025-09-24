@@ -193,19 +193,53 @@ function createWindow() {
     // Initialize WebSocket connection for extraction logs
     initializeWebSocket()
     
-    // Check for updates (only in production) - Professional Implementation
+    // Check for updates (only in production) - Professional Implementation with Detailed Logging
     if (!process.env.NODE_ENV || process.env.NODE_ENV === 'production') {
+      console.log('🚀 Auto-updater initializing...')
+      console.log('📦 Current version:', app.getVersion())
+      console.log('🔗 Repository:', 'iamranawaqas100/manual-extrator')
+      
       // Use the official Electron update module for GitHub releases
       updateElectronApp({
         repo: 'iamranawaqas100/manual-extrator',
-        updateInterval: '1 hour',
+        updateInterval: '5 minutes', // Check more frequently for testing
         logger: console
       })
       
-      // Also keep the manual check as backup
+      // Enhanced manual check with detailed logging
       setTimeout(() => {
+        console.log('⏰ Manual update check starting in 3 seconds...')
         checkForUpdates()
       }, 3000)
+      
+      // Send logs to renderer for UI display
+      autoUpdater.on('checking-for-update', () => {
+        console.log('🔍 Checking for update...')
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-log', '🔍 Checking for update...')
+        }
+      })
+      
+      autoUpdater.on('update-available', (info) => {
+        console.log('✅ Update available:', info.version)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-log', `✅ Update available: ${info.version}`)
+        }
+      })
+      
+      autoUpdater.on('update-not-available', (info) => {
+        console.log('❌ Update not available. Current version:', info.version)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-log', `❌ Update not available. Current: ${info.version}`)
+        }
+      })
+      
+      autoUpdater.on('error', (err) => {
+        console.error('💥 Update error:', err)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-log', `💥 Update error: ${err.message}`)
+        }
+      })
     }
   })
 

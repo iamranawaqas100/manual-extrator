@@ -47,6 +47,9 @@ class DataExtractorApp {
         
         // Set up extraction log listener
         this.setupExtractionLogListener()
+        
+        // Set up update log listener
+        this.setupUpdateLogListener()
     }
     
     checkAuth() {
