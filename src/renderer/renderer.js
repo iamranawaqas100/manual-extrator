@@ -811,11 +811,21 @@ class DataExtractorApp {
                         appContainer.style.opacity = '0'
                         appContainer.style.transition = 'opacity 0.3s ease'
                         
-                        // Fade in app container
+                        // Fade in app container and wait for render
                         setTimeout(() => {
                             appContainer.style.opacity = '1'
+                            
+                            // Force a reflow to ensure all elements are rendered
+                            appContainer.offsetHeight
+                            
+                            // Additional delay to ensure all child elements are ready
+                            setTimeout(() => {
+                                console.log('🎯 App container fully rendered, proceeding with protocol handling')
+                            }, 200)
                         }, 50)
                     }, 300)
+                } else {
+                    console.log('🔓 Login/App containers not found, assuming app already loaded')
                 }
                 
                 this.showUpdateLog('🔓 Authentication bypassed for website integration')
@@ -827,18 +837,38 @@ class DataExtractorApp {
             // Wait a moment for UI to be ready
             setTimeout(async () => {
                 try {
-                    // Ensure UI is fully ready
+                    // Ensure UI is fully ready with more complete check
                     const urlInput = document.getElementById('urlInput')
                     const appContainer = document.getElementById('appContainer')
+                    const extractModeBtn = document.getElementById('extractModeBtn')
+                    const webview = document.getElementById('webview')
                     
-                    if (!urlInput || !appContainer) {
+                    if (!urlInput || !appContainer || !extractModeBtn || !webview) {
                         console.error('❌ Required UI elements not found')
+                        console.error('Missing elements:', {
+                            urlInput: !!urlInput,
+                            appContainer: !!appContainer, 
+                            extractModeBtn: !!extractModeBtn,
+                            webview: !!webview
+                        })
                         this.showUpdateLog('❌ UI not ready, retrying...')
                         
-                        // Retry after a longer delay
-                        setTimeout(() => this.handleProtocolExtract(data), 2000)
+                        // Retry with exponential backoff - but limit retries to prevent infinite loop
+                        if (!this.protocolRetryCount) this.protocolRetryCount = 0
+                        this.protocolRetryCount++
+                        
+                        if (this.protocolRetryCount < 5) {
+                            const delay = Math.min(2000 * this.protocolRetryCount, 10000) // Max 10 seconds
+                            setTimeout(() => this.handleProtocolExtract(data), delay)
+                        } else {
+                            this.showUpdateLog('❌ UI failed to load after multiple attempts')
+                            console.error('❌ Giving up after 5 retry attempts')
+                        }
                         return
                     }
+                    
+                    // Reset retry counter on success
+                    this.protocolRetryCount = 0
                     
                     // Set URL and show loading state
                     urlInput.value = url
@@ -885,7 +915,7 @@ class DataExtractorApp {
                     this.showUpdateLog(`❌ Failed to load: ${error.message}`)
                     this.updateStatus(`Error loading: ${url}`)
                 }
-            }, bypassAuth ? 1500 : 500) // Wait longer if bypassing auth
+            }, bypassAuth ? 2500 : 500) // Wait longer if bypassing auth for UI to fully render
         }
     }
 
