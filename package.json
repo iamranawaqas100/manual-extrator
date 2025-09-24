@@ -1,6 +1,6 @@
 {
   "name": "advanced-data-extractor",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Professional web scraping desktop application with Chrome extension functionality",
   "main": "src/main.js",
   "scripts": {
