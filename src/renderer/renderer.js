@@ -882,12 +882,12 @@ class DataExtractorApp {
                     console.log('🧭 Navigation completed successfully')
                     
                     // Wait for webview to be ready
-                    const webview = document.getElementById('webview')
-                    if (webview) {
+                    const webviewElement = document.getElementById('webview')
+                    if (webviewElement) {
                         // Wait for page to load before enabling extraction
                         const waitForLoad = new Promise((resolve) => {
                             const checkLoad = () => {
-                                if (webview.src && webview.src !== 'about:blank') {
+                                if (webviewElement.src && webviewElement.src !== 'about:blank') {
                                     setTimeout(resolve, 2000) // Extra 2 seconds for page stability
                                 } else {
                                     setTimeout(checkLoad, 500) // Check again in 500ms
