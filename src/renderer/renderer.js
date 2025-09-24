@@ -797,10 +797,17 @@ class DataExtractorApp {
                 // Skip auth check and proceed directly
                 this.isAuthenticated = true
                 
-                // Smoothly transition from login to app
+                // Check if we need to transition from login to app, or if app is already shown
                 const loginContainer = document.getElementById('loginContainer')
                 const appContainer = document.getElementById('appContainer')
-                if (loginContainer && appContainer) {
+                
+                // Check if login is currently visible
+                const loginVisible = loginContainer && 
+                    loginContainer.style.display !== 'none' && 
+                    getComputedStyle(loginContainer).display !== 'none'
+                
+                if (loginVisible && appContainer) {
+                    console.log('🔓 Transitioning from login to app interface')
                     // Add smooth transition
                     loginContainer.style.transition = 'opacity 0.3s ease'
                     loginContainer.style.opacity = '0'
@@ -825,7 +832,9 @@ class DataExtractorApp {
                         }, 50)
                     }, 300)
                 } else {
-                    console.log('🔓 Login/App containers not found, assuming app already loaded')
+                    console.log('🔓 App already loaded and visible, no transition needed')
+                    // App is already visible, just ensure it's marked as authenticated
+                    this.isAuthenticated = true
                 }
                 
                 this.showUpdateLog('🔓 Authentication bypassed for website integration')
@@ -834,6 +843,12 @@ class DataExtractorApp {
             // Show notification
             this.showUpdateLog(`🌐 Opening URL from website: ${url}`)
             
+            // Determine if we're transitioning from login
+            const loginContainer = document.getElementById('loginContainer')
+            const needsTransition = loginContainer && 
+                loginContainer.style.display !== 'none' && 
+                getComputedStyle(loginContainer).display !== 'none'
+                
             // Wait a moment for UI to be ready
             setTimeout(async () => {
                 try {
@@ -843,7 +858,16 @@ class DataExtractorApp {
                     const extractModeBtn = document.getElementById('extractModeBtn')
                     const webview = document.getElementById('webview')
                     
-                    if (!urlInput || !appContainer || !extractModeBtn || !webview) {
+                    // Check for essential elements (appContainer might not exist if app is already loaded)
+                    const essentialElements = {
+                        urlInput: !!urlInput,
+                        extractModeBtn: !!extractModeBtn,
+                        webview: !!webview
+                    }
+                    
+                    const missingEssential = Object.entries(essentialElements).filter(([key, exists]) => !exists)
+                    
+                    if (missingEssential.length > 0) {
                         console.error('❌ Required UI elements not found')
                         console.error('Missing elements:', {
                             urlInput: !!urlInput,
@@ -851,6 +875,7 @@ class DataExtractorApp {
                             extractModeBtn: !!extractModeBtn,
                             webview: !!webview
                         })
+                        console.error('Missing essential:', missingEssential.map(([key]) => key))
                         this.showUpdateLog('❌ UI not ready, retrying...')
                         
                         // Retry with exponential backoff - but limit retries to prevent infinite loop
@@ -915,7 +940,7 @@ class DataExtractorApp {
                     this.showUpdateLog(`❌ Failed to load: ${error.message}`)
                     this.updateStatus(`Error loading: ${url}`)
                 }
-            }, bypassAuth ? 2500 : 500) // Wait longer if bypassing auth for UI to fully render
+            }, bypassAuth ? (needsTransition ? 2500 : 1000) : 500) // Wait longer only if transitioning from login
         }
     }
 
