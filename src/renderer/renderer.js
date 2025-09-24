@@ -229,7 +229,7 @@ class DataExtractorApp {
         })
     }
 
-    async navigateToUrl() {
+    async navigateToUrl(skipDialog = false) {
         const urlInput = document.getElementById('urlInput')
         const url = urlInput.value.trim()
         
@@ -244,9 +244,20 @@ class DataExtractorApp {
             fullUrl = 'https://' + url
         }
 
-        // Ask user for extraction method
+        // Skip dialog if requested (for protocol handler)
+        let extractionMethod = 'manual'
+        if (!skipDialog) {
+            // Ask user for extraction method
+            try {
+                extractionMethod = await window.electronAPI.showExtractionDialog()
+            } catch (error) {
+                console.log('Dialog cancelled or error:', error)
+                return
+            }
+        }
+
+        // Process based on extraction method
         try {
-            const extractionMethod = await window.electronAPI.showExtractionDialog()
             
             if (extractionMethod === 'ai') {
                 // Store current URL for AI extraction
@@ -782,8 +793,8 @@ class DataExtractorApp {
                     console.log('📝 Set URL input to:', url)
                     
                     try {
-                        // Navigate to the URL automatically
-                        await this.navigateToUrl()
+                        // Navigate to the URL automatically (skip dialog)
+                        await this.navigateToUrl(true)
                         console.log('🧭 Navigation completed')
                         
                         // Enable extraction mode automatically after page loads
