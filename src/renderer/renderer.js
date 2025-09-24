@@ -133,6 +133,11 @@ class DataExtractorApp {
             })
         })
 
+        // Extract Mode button
+        document.getElementById('extractModeBtn').addEventListener('click', () => {
+            this.toggleExtractionMode()
+        })
+
         // Action buttons
         document.getElementById('findSimilarBtn').addEventListener('click', () => {
             this.findSimilar()
@@ -681,6 +686,55 @@ class DataExtractorApp {
             document.querySelectorAll('.field-btn').forEach(btn => {
                 btn.classList.remove('active')
             })
+        }
+    }
+
+    toggleExtractionMode() {
+        const extractModeBtn = document.getElementById('extractModeBtn')
+        const webview = document.getElementById('webview')
+        
+        // Toggle extraction mode
+        if (extractModeBtn.classList.contains('active')) {
+            // Currently in extract mode - disable it
+            extractModeBtn.classList.remove('active')
+            extractModeBtn.textContent = 'Extract Mode'
+            this.isSelecting = false
+            this.selectedField = null
+            
+            // Clear any active field selections
+            document.querySelectorAll('.field-btn').forEach(btn => {
+                btn.classList.remove('active')
+            })
+            
+            // Disable extraction in webview
+            if (webview && webview.src !== 'about:blank') {
+                webview.executeJavaScript(`
+                    window.postMessage({ 
+                        command: 'STOP_EXTRACTION' 
+                    }, '*');
+                `)
+            }
+            
+            this.updateStatus('Extraction mode disabled')
+        } else {
+            // Enable extract mode
+            extractModeBtn.classList.add('active')
+            extractModeBtn.textContent = 'Exit Extract Mode'
+            
+            // Enable extraction in webview
+            if (webview && webview.src !== 'about:blank') {
+                webview.executeJavaScript(`
+                    window.postMessage({ 
+                        command: 'ENABLE_EXTRACTION' 
+                    }, '*');
+                `)
+                this.updateStatus('Extraction mode enabled - select a field to extract data')
+            } else {
+                this.updateStatus('Please load a page first to enable extraction mode')
+                // Reset button state
+                extractModeBtn.classList.remove('active')
+                extractModeBtn.textContent = 'Extract Mode'
+            }
         }
     }
 
@@ -1342,6 +1396,56 @@ class DataExtractorApp {
         window.electronAPI.onExtractionLog((event, logData) => {
             this.handleExtractionLog(logData)
         })
+    }
+    
+    setupUpdateLogListener() {
+        // Listen for update logs from main process
+        window.electronAPI.onUpdateLog((event, message) => {
+            console.log('🔄 Update Log:', message)
+            this.showUpdateLog(message)
+        })
+    }
+    
+    showUpdateLog(message) {
+        // Create or update update log display
+        let updateLogDiv = document.getElementById('updateLogDiv')
+        if (!updateLogDiv) {
+            updateLogDiv = document.createElement('div')
+            updateLogDiv.id = 'updateLogDiv'
+            updateLogDiv.style.cssText = `
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: rgba(0,0,0,0.9);
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+                font-family: monospace;
+                font-size: 12px;
+                max-width: 400px;
+                z-index: 10000;
+                border: 1px solid #444;
+            `
+            document.body.appendChild(updateLogDiv)
+        }
+        
+        const timestamp = new Date().toLocaleTimeString()
+        updateLogDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`
+        
+        // Keep only last 10 messages
+        const lines = updateLogDiv.children
+        if (lines.length > 10) {
+            updateLogDiv.removeChild(lines[0])
+        }
+        
+        // Auto-hide after 30 seconds if no error
+        if (!message.includes('💥') && !message.includes('✅')) {
+            setTimeout(() => {
+                if (updateLogDiv && updateLogDiv.parentNode) {
+                    updateLogDiv.style.opacity = '0.5'
+                }
+            }, 30000)
+        }
     }
     
     handleExtractionLog(logData) {

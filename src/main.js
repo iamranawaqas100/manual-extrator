@@ -709,6 +709,30 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
   console.log('Update available:', info.version)
   if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-log', `✅ Update available: ${info.version}`)
+    
+    // Show update dialog immediately
+    const response = dialog.showMessageBoxSync(mainWindow, {
+      type: 'question',
+      buttons: ['Download and Install', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Update Available',
+      message: `Version ${info.version} is available!`,
+      detail: 'A new version of the application is available. Would you like to download and install it now?'
+    })
+    
+    if (response === 0) {
+      // User chose to download and install
+      console.log('User chose to download update')
+      mainWindow.webContents.send('update-log', '📥 Starting download...')
+      // Download will start automatically
+    } else {
+      // User chose later
+      console.log('User chose to install later')
+      mainWindow.webContents.send('update-log', '⏰ Update postponed')
+    }
+    
     mainWindow.webContents.send('update-available', info)
   }
 })
@@ -721,15 +745,29 @@ autoUpdater.on('update-not-available', (info) => {
 autoUpdater.on('error', (err) => {
   console.error('Update error:', err)
   updateCheckInProgress = false
+  
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-log', `💥 Update error: ${err.message}`)
+    
+    // Show error dialog only for critical errors
+    if (err.message.includes('ENOTFOUND') || err.message.includes('network')) {
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        buttons: ['OK'],
+        title: 'Update Check Failed',
+        message: 'Unable to check for updates',
+        detail: 'Please check your internet connection and try again later.'
+      })
+    }
+  }
 })
 
 autoUpdater.on('download-progress', (progressObj) => {
-  let logMessage = "Download speed: " + progressObj.bytesPerSecond
-  logMessage = logMessage + ' - Downloaded ' + progressObj.percent + '%'
-  logMessage = logMessage + ' (' + progressObj.transferred + "/" + progressObj.total + ')'
+  let logMessage = `📥 Download progress: ${Math.round(progressObj.percent)}%`
   console.log(logMessage)
   
   if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-log', logMessage)
     mainWindow.webContents.send('download-progress', progressObj)
   }
 })
@@ -739,22 +777,28 @@ autoUpdater.on('update-downloaded', (info) => {
   updateCheckInProgress = false
   
   if (mainWindow && !mainWindow.isDestroyed()) {
-    // Show update dialog
+    mainWindow.webContents.send('update-log', `✅ Update downloaded: v${info.version}`)
+    
+    // Show installation dialog
     const response = dialog.showMessageBoxSync(mainWindow, {
-      type: 'question',
-      buttons: ['Install and Restart', 'Install Later'],
+      type: 'info',
+      buttons: ['Restart and Install', 'Install Later'],
       defaultId: 0,
       cancelId: 1,
-      title: 'Update Available',
-      message: `Version ${info.version} has been downloaded and is ready to install.`,
-      detail: 'The application will restart to apply the update. Any unsaved work will be lost.'
+      title: 'Update Ready',
+      message: `Version ${info.version} is ready to install!`,
+      detail: 'The application will restart to apply the update. Click "Restart and Install" to update now, or "Install Later" to update on next app start.'
     })
     
     if (response === 0) {
       // User chose to install now
+      console.log('User chose to restart and install')
+      mainWindow.webContents.send('update-log', '🔄 Restarting to install update...')
       setImmediate(() => autoUpdater.quitAndInstall())
     } else {
       // User chose to install later
+      console.log('User chose to install later')
+      mainWindow.webContents.send('update-log', '⏰ Update will install on next restart')
       mainWindow.webContents.send('update-ready', info)
     }
   }
