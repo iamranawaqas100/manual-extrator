@@ -101,17 +101,21 @@
             <h3>🚀 Quick Test</h3>
             <p>Try these pre-configured examples:</p>
             
-            <a href="dataextractor://extract?url=https://example.com" class="extract-btn">
-                📊 Extract from Example.com
+            <a href="dataextractor://extract?url=https://httpbin.org/html" class="extract-btn" onclick="console.log('🔗 Clicked: HTTPBin test page')">
+                📊 Extract from HTTPBin (Test Page)
             </a>
             
-            <a href="dataextractor://extract?url=https://news.ycombinator.com" class="extract-btn">
+            <a href="dataextractor://extract?url=https://example.com" class="extract-btn" onclick="console.log('🔗 Clicked: Example.com')">
+                🌐 Extract from Example.com
+            </a>
+            
+            <a href="dataextractor://extract?url=https://news.ycombinator.com" class="extract-btn" onclick="console.log('🔗 Clicked: Hacker News')">
                 📰 Extract from Hacker News
             </a>
             
-            <a href="dataextractor://extract?url=https://amazon.com" class="extract-btn">
-                🛒 Extract from Amazon
-            </a>
+            <button onclick="extractCurrentPage()" class="extract-btn">
+                📍 Extract Current Page (This Demo)
+            </button>
         </div>
 
         <div class="demo-section">
@@ -200,11 +204,43 @@ window.addEventListener('load', addExtractButton);
             const url = document.getElementById('customUrl').value;
             if (url) {
                 const extractUrl = `dataextractor://extract?url=${encodeURIComponent(url)}`;
+                console.log('🚀 Opening Data Extractor with URL:', url);
+                console.log('🔗 Protocol URL:', extractUrl);
                 window.location.href = extractUrl;
             } else {
                 alert('Please enter a URL first!');
             }
         }
+
+        function extractCurrentPage() {
+            const currentUrl = window.location.href;
+            const extractUrl = `dataextractor://extract?url=${encodeURIComponent(currentUrl)}`;
+            console.log('🚀 Opening Data Extractor with current page:', currentUrl);
+            console.log('🔗 Protocol URL:', extractUrl);
+            window.location.href = extractUrl;
+        }
+
+        // Debug function to test protocol format
+        function testProtocolFormat(testUrl) {
+            const extractUrl = `dataextractor://extract?url=${encodeURIComponent(testUrl)}`;
+            console.log('Testing protocol format:');
+            console.log('Input URL:', testUrl);
+            console.log('Protocol URL:', extractUrl);
+            console.log('Decoded back:', decodeURIComponent(new URL(extractUrl).searchParams.get('url')));
+            return extractUrl;
+        }
+
+        // Test the protocol format on page load
+        window.addEventListener('load', () => {
+            console.log('🎯 Demo page loaded. Testing protocol format...');
+            testProtocolFormat('https://example.com/test');
+            
+            // Show instructions
+            console.log('📋 Available demo functions:');
+            console.log('- extractCurrentPage() - Extract this demo page');
+            console.log('- extractCustomUrl() - Extract URL from input field');
+            console.log('- testProtocolFormat(url) - Test URL encoding');
+        });
 
         // Add some interactive feedback
         document.querySelectorAll('.extract-btn').forEach(btn => {
@@ -213,6 +249,27 @@ window.addEventListener('load', addExtractButton);
                 setTimeout(() => {
                     this.style.transform = '';
                 }, 150);
+                
+                // Log the click
+                console.log('🖱️ Extract button clicked:', this.textContent.trim());
+            });
+        });
+
+        // Add debugging for protocol URLs
+        document.querySelectorAll('a[href^="dataextractor://"]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                console.log('🔗 Protocol link clicked:', this.href);
+                const url = new URL(this.href);
+                const targetUrl = url.searchParams.get('url');
+                console.log('📍 Target URL to extract:', targetUrl);
+                
+                // Add visual feedback
+                this.style.backgroundColor = '#28a745';
+                this.style.color = 'white';
+                setTimeout(() => {
+                    this.style.backgroundColor = '';
+                    this.style.color = '';
+                }, 1000);
             });
         });
     </script>
