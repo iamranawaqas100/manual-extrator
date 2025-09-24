@@ -772,13 +772,28 @@ class DataExtractorApp {
                 // Skip auth check and proceed directly
                 this.isAuthenticated = true
                 
-                // Hide login page if visible
+                // Smoothly transition from login to app
                 const loginContainer = document.getElementById('loginContainer')
                 const appContainer = document.getElementById('appContainer')
                 if (loginContainer && appContainer) {
-                    loginContainer.style.display = 'none'
-                    appContainer.style.display = 'block'
+                    // Add smooth transition
+                    loginContainer.style.transition = 'opacity 0.3s ease'
+                    loginContainer.style.opacity = '0'
+                    
+                    setTimeout(() => {
+                        loginContainer.style.display = 'none'
+                        appContainer.style.display = 'block'
+                        appContainer.style.opacity = '0'
+                        appContainer.style.transition = 'opacity 0.3s ease'
+                        
+                        // Fade in app container
+                        setTimeout(() => {
+                            appContainer.style.opacity = '1'
+                        }, 50)
+                    }, 300)
                 }
+                
+                this.showUpdateLog('🔓 Authentication bypassed for website integration')
             }
             
             // Show notification
@@ -786,40 +801,64 @@ class DataExtractorApp {
             
             // Wait a moment for UI to be ready
             setTimeout(async () => {
-                // Navigate to the URL
-                const urlInput = document.getElementById('urlInput')
-                if (urlInput) {
+                try {
+                    // Ensure UI is fully ready
+                    const urlInput = document.getElementById('urlInput')
+                    const appContainer = document.getElementById('appContainer')
+                    
+                    if (!urlInput || !appContainer) {
+                        console.error('❌ Required UI elements not found')
+                        this.showUpdateLog('❌ UI not ready, retrying...')
+                        
+                        // Retry after a longer delay
+                        setTimeout(() => this.handleProtocolExtract(data), 2000)
+                        return
+                    }
+                    
+                    // Set URL and show loading state
                     urlInput.value = url
                     console.log('📝 Set URL input to:', url)
+                    this.updateStatus('Loading website from protocol...')
                     
-                    try {
-                        // Navigate to the URL automatically (skip dialog)
-                        await this.navigateToUrl(true)
-                        console.log('🧭 Navigation completed')
-                        
-                        // Enable extraction mode automatically after page loads
-                        setTimeout(() => {
-                            const extractModeBtn = document.getElementById('extractModeBtn')
-                            if (extractModeBtn && !extractModeBtn.classList.contains('active')) {
-                                console.log('🎯 Enabling extraction mode')
-                                this.toggleExtractionMode()
+                    // Navigate to the URL automatically (skip dialog)
+                    await this.navigateToUrl(true)
+                    console.log('🧭 Navigation completed')
+                    
+                    // Wait for webview to be ready
+                    const webview = document.getElementById('webview')
+                    if (webview) {
+                        // Wait for page to load before enabling extraction
+                        const waitForLoad = new Promise((resolve) => {
+                            const checkLoad = () => {
+                                if (webview.src && webview.src !== 'about:blank') {
+                                    setTimeout(resolve, 2000) // Extra 2 seconds for page stability
+                                } else {
+                                    setTimeout(checkLoad, 500) // Check again in 500ms
+                                }
                             }
-                        }, 3000) // Wait 3 seconds for page to fully load
+                            checkLoad()
+                        })
                         
-                        // Show helpful message
-                        this.updateStatus(`Ready to extract data from: ${url}`)
-                        this.showUpdateLog('🎯 Extraction mode will be enabled automatically')
+                        await waitForLoad
                         
-                    } catch (error) {
-                        console.error('❌ Navigation failed:', error)
-                        this.showUpdateLog(`❌ Failed to navigate to: ${url}`)
-                        this.updateStatus(`Error loading: ${url}`)
+                        // Enable extraction mode automatically
+                        const extractModeBtn = document.getElementById('extractModeBtn')
+                        if (extractModeBtn && !extractModeBtn.classList.contains('active')) {
+                            console.log('🎯 Enabling extraction mode')
+                            this.toggleExtractionMode()
+                            this.showUpdateLog('✅ Extraction mode enabled - ready to extract!')
+                        }
                     }
-                } else {
-                    console.error('❌ URL input not found')
-                    this.showUpdateLog('❌ URL input field not found')
+                    
+                    // Show success message
+                    this.updateStatus(`Ready to extract data from: ${url}`)
+                    
+                } catch (error) {
+                    console.error('❌ Protocol handling failed:', error)
+                    this.showUpdateLog(`❌ Failed to load: ${error.message}`)
+                    this.updateStatus(`Error loading: ${url}`)
                 }
-            }, bypassAuth ? 1000 : 100) // Wait longer if bypassing auth
+            }, bypassAuth ? 1500 : 500) // Wait longer if bypassing auth
         }
     }
 
