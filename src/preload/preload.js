@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showItemInFolder: (path) => require('electron').shell.showItemInFolder(path),
 
   // App info
-  getAppVersion: () => require('../../package.json').version,
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getAppName: () => require('../../package.json').name,
 
   // Auto-updater

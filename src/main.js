@@ -341,6 +341,10 @@ function createMenu() {
 }
 
 // IPC Handlers
+ipcMain.handle('get-app-version', async () => {
+  return require('../package.json').version
+})
+
 ipcMain.handle('get-extracted-data', async () => {
   return new Promise((resolve, reject) => {
     db.all('SELECT * FROM extracted_data ORDER BY created_at DESC', [], (err, rows) => {
