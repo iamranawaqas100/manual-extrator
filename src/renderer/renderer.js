@@ -177,6 +177,7 @@ class DataExtractorApp {
         // Data controls
         document.getElementById('addItemBtn').addEventListener('click', () => {
             this.addNewItem()
+            this.showExtractionControls()
         })
         
         document.getElementById('finishItemBtn').addEventListener('click', () => {
@@ -191,21 +192,54 @@ class DataExtractorApp {
             this.toggleHighlights()
         })
 
-        // Browser controls
-        document.getElementById('backBtn').addEventListener('click', () => {
-            // TODO: Implement browser back
-            this.updateStatus('Browser back functionality coming soon')
-        })
+        // Extraction controls toggle
+        const closeExtractionBtn = document.getElementById('closeExtractionBtn')
+        if (closeExtractionBtn) {
+            closeExtractionBtn.addEventListener('click', () => {
+                this.hideExtractionControls()
+            })
+        }
+
+        // Browser controls (moved to title bar)
+        const backBtn = document.getElementById('backBtn')
+        const forwardBtn = document.getElementById('forwardBtn')
+        const refreshBtn = document.getElementById('refreshBtn')
         
-        document.getElementById('forwardBtn').addEventListener('click', () => {
-            // TODO: Implement browser forward
-            this.updateStatus('Browser forward functionality coming soon')
-        })
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                const webview = document.getElementById('webview')
+                if (webview && webview.canGoBack()) {
+                    webview.goBack()
+                    this.updateStatus('Navigated back')
+                } else {
+                    this.updateStatus('Cannot go back')
+                }
+            })
+        }
         
-        document.getElementById('refreshBtn').addEventListener('click', () => {
-            // TODO: Implement browser refresh
-            this.updateStatus('Browser refresh functionality coming soon')
-        })
+        if (forwardBtn) {
+            forwardBtn.addEventListener('click', () => {
+                const webview = document.getElementById('webview')
+                if (webview && webview.canGoForward()) {
+                    webview.goForward()
+                    this.updateStatus('Navigated forward')
+                } else {
+                    this.updateStatus('Cannot go forward')
+                }
+            })
+        }
+        
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                const webview = document.getElementById('webview')
+                if (webview && webview.src && webview.src !== 'about:blank') {
+                    webview.reload()
+                    this.updateStatus('Page refreshed')
+                } else {
+                    this.updateStatus('No page loaded')
+                }
+            })
+        }
 
         // Modal controls
         document.getElementById('modalClose').addEventListener('click', () => {
@@ -330,7 +364,6 @@ class DataExtractorApp {
     loadUrlInWebview(url) {
         const webview = document.getElementById('webview')
         webview.src = url
-        document.getElementById('browserUrl').textContent = url
         this.updateStatus(`Loaded: ${url} - Ready for manual extraction`)
         
         // Setup webview event listeners
@@ -417,7 +450,7 @@ class DataExtractorApp {
         
         // Handle navigation
         webview.addEventListener('did-navigate', (event) => {
-            document.getElementById('browserUrl').textContent = event.url
+            // Navigation handled
         })
 
         // Force popups and new windows to open in the same webview
@@ -432,7 +465,7 @@ class DataExtractorApp {
 
         // Keep status URL in sync for will-navigate too
         webview.addEventListener('will-navigate', (event) => {
-            document.getElementById('browserUrl').textContent = event.url
+            // Navigation will occur
         })
         
         // Handle loading errors
@@ -1091,6 +1124,20 @@ class DataExtractorApp {
         } catch (error) {
             console.error('Error creating new item:', error)
             this.updateStatus(`Error creating new item: ${error.message}`)
+        }
+    }
+
+    showExtractionControls() {
+        const extractionControls = document.getElementById('extractionControls')
+        if (extractionControls) {
+            extractionControls.style.display = 'block'
+        }
+    }
+
+    hideExtractionControls() {
+        const extractionControls = document.getElementById('extractionControls')
+        if (extractionControls) {
+            extractionControls.style.display = 'none'
         }
     }
 
@@ -1856,12 +1903,6 @@ class DataExtractorApp {
         
         // Load the same URL in webview for manual QC
         this.loadUrlInWebview(this.currentUrl)
-        
-        // Update browser URL display
-        const browserUrl = document.getElementById('browserUrl')
-        if (browserUrl) {
-            browserUrl.textContent = this.currentUrl
-        }
         
         // Wait for page to load, then highlight AI-extracted items
         setTimeout(() => {

@@ -3,7 +3,6 @@ const { autoUpdater } = require('electron-updater')
 const { updateElectronApp } = require('update-electron-app')
 const path = require('path')
 const fs = require('fs')
-const sqlite3 = require('sqlite3').verbose()
 const http = require('http')
 const WebSocket = require('ws')
 
@@ -14,7 +13,9 @@ app.commandLine.appendSwitch('remote-allow-origins', '*')
 
 // Keep a global reference of the window object
 let mainWindow
-let db
+// In-memory data storage
+let extractedData = []
+let templates = []
 let aiView = null
 let aiViewActive = false
 let extractionWebSocket = null
@@ -59,41 +60,12 @@ if (process.env.NODE_ENV === 'development') {
   }
 }
 
-function createDatabase() {
-  const dbPath = path.join(app.getPath('userData'), 'extractor.db')
-  
-  db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-      console.error('Error opening database:', err)
-    } else {
-      console.log('Connected to SQLite database')
-      
-      // Create tables if they don't exist
-      db.run(`
-        CREATE TABLE IF NOT EXISTS extracted_data (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          url TEXT NOT NULL,
-          title TEXT,
-          description TEXT,
-          image TEXT,
-          price TEXT,
-          verified BOOLEAN DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `)
-      
-      db.run(`
-        CREATE TABLE IF NOT EXISTS templates (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          url_pattern TEXT,
-          selectors TEXT, -- JSON string
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `)
-    }
-  })
+// Initialize in-memory data storage
+function initializeDataStorage() {
+  console.log('Initialized in-memory data storage')
+  // Data will be stored in memory arrays
+  extractedData = []
+  templates = []
 }
 
 function createWindow() {
@@ -389,51 +361,61 @@ ipcMain.handle('get-app-version', async () => {
 })
 
 ipcMain.handle('get-extracted-data', async () => {
-  return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM extracted_data ORDER BY created_at DESC', [], (err, rows) => {
-      if (err) reject(new Error(`Database error: ${err.message}`))
-      else resolve(rows)
-    })
-  })
+  // Return data sorted by creation date (newest first)
+  return extractedData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 })
 
 ipcMain.handle('save-extracted-data', async (event, data) => {
-  return new Promise((resolve, reject) => {
-    const { url, title, description, image, price } = data
-    
-    db.run(
-      'INSERT INTO extracted_data (url, title, description, image, price) VALUES (?, ?, ?, ?, ?)',
-      [url, title, description, image, price],
-      function(err) {
-        if (err) reject(new Error(`Database save error: ${err.message}`))
-        else resolve({ id: this.lastID, ...data })
-      }
-    )
-  })
+  const { url, title, description, image, price } = data
+  
+  // Generate a unique ID
+  const id = extractedData.length > 0 ? Math.max(...extractedData.map(item => item.id)) + 1 : 1
+  
+  const newItem = {
+    id,
+    url,
+    title,
+    description,
+    image,
+    price,
+    verified: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+  
+  extractedData.push(newItem)
+  return newItem
 })
 
 ipcMain.handle('update-extracted-data', async (event, id, data) => {
-  return new Promise((resolve, reject) => {
-    const { title, description, image, price, verified } = data
-    
-    db.run(
-      'UPDATE extracted_data SET title = ?, description = ?, image = ?, price = ?, verified = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [title, description, image, price, verified ? 1 : 0, id],
-      function(err) {
-        if (err) reject(new Error(`Database update error: ${err.message}`))
-        else resolve({ id, ...data })
-      }
-    )
-  })
+  const { title, description, image, price, verified } = data
+  
+  const itemIndex = extractedData.findIndex(item => item.id === id)
+  if (itemIndex === -1) {
+    throw new Error(`Item with id ${id} not found`)
+  }
+  
+  extractedData[itemIndex] = {
+    ...extractedData[itemIndex],
+    title,
+    description,
+    image,
+    price,
+    verified: verified || false,
+    updated_at: new Date().toISOString()
+  }
+  
+  return { id, ...data }
 })
 
 ipcMain.handle('delete-extracted-data', async (event, id) => {
-  return new Promise((resolve, reject) => {
-    db.run('DELETE FROM extracted_data WHERE id = ?', [id], function(err) {
-      if (err) reject(new Error(`Database delete error: ${err.message}`))
-      else resolve(true)
-    })
-  })
+  const itemIndex = extractedData.findIndex(item => item.id === id)
+  if (itemIndex === -1) {
+    throw new Error(`Item with id ${id} not found`)
+  }
+  
+  extractedData.splice(itemIndex, 1)
+  return true
 })
 
 ipcMain.handle('export-data', async (event, format = 'json') => {
@@ -447,47 +429,41 @@ ipcMain.handle('export-data', async (event, format = 'json') => {
   })
 
   if (!result.canceled) {
-    return new Promise((resolve, reject) => {
-      db.all('SELECT * FROM extracted_data ORDER BY created_at DESC', [], (err, rows) => {
-        if (err) {
-          reject(new Error(`Database export error: ${err.message}`))
-          return
-        }
+    try {
+      // Get data sorted by creation date (newest first)
+      const rows = extractedData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      
+      let content
+      if (format === 'csv' || result.filePath.endsWith('.csv')) {
+        // Convert to CSV
+        const headers = ['ID', 'URL', 'Title', 'Description', 'Image', 'Price', 'Verified', 'Created At']
+        const csvRows = [headers.join(',')]
+        
+        rows.forEach(row => {
+          const values = [
+            row.id,
+            `"${(row.url || '').replace(/"/g, '""')}"`,
+            `"${(row.title || '').replace(/"/g, '""')}"`,
+            `"${(row.description || '').replace(/"/g, '""')}"`,
+            `"${(row.image || '').replace(/"/g, '""')}"`,
+            `"${(row.price || '').replace(/"/g, '""')}"`,
+            row.verified ? 'Yes' : 'No',
+            row.created_at
+          ]
+          csvRows.push(values.join(','))
+        })
+        
+        content = csvRows.join('\n')
+      } else {
+        // Convert to JSON
+        content = JSON.stringify(rows, null, 2)
+      }
 
-        try {
-          let content
-          if (format === 'csv' || result.filePath.endsWith('.csv')) {
-            // Convert to CSV
-            const headers = ['ID', 'URL', 'Title', 'Description', 'Image', 'Price', 'Verified', 'Created At']
-            const csvRows = [headers.join(',')]
-            
-            rows.forEach(row => {
-              const values = [
-                row.id,
-                `"${(row.url || '').replace(/"/g, '""')}"`,
-                `"${(row.title || '').replace(/"/g, '""')}"`,
-                `"${(row.description || '').replace(/"/g, '""')}"`,
-                `"${(row.image || '').replace(/"/g, '""')}"`,
-                `"${(row.price || '').replace(/"/g, '""')}"`,
-                row.verified ? 'Yes' : 'No',
-                row.created_at
-              ]
-              csvRows.push(values.join(','))
-            })
-            
-            content = csvRows.join('\n')
-          } else {
-            // Convert to JSON
-            content = JSON.stringify(rows, null, 2)
-          }
-
-          fs.writeFileSync(result.filePath, content, 'utf8')
-          resolve({ success: true, path: result.filePath, count: rows.length })
-        } catch (error) {
-          reject(new Error(`Export processing error: ${error.message}`))
-        }
-      })
-    })
+      fs.writeFileSync(result.filePath, content, 'utf8')
+      return { success: true, path: result.filePath, count: rows.length }
+    } catch (error) {
+      throw new Error(`Export processing error: ${error.message}`)
+    }
   }
   
   return { success: false, canceled: true }
@@ -629,7 +605,7 @@ function handleStartupProtocol() {
 
 // App event handlers
 app.whenReady().then(() => {
-  createDatabase()
+  initializeDataStorage()
   createWindow()
   createMenu()
   
@@ -645,20 +621,18 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    if (db) {
-      db.close((err) => {
-        if (err) console.error('Error closing database:', err)
-        else console.log('Database connection closed')
-      })
-    }
+    // Clear in-memory data on app close
+    extractedData = []
+    templates = []
+    console.log('In-memory data cleared')
     app.quit()
   }
 })
 
 app.on('before-quit', () => {
-  if (db) {
-    db.close()
-  }
+  // Clear in-memory data before quit
+  extractedData = []
+  templates = []
   if (extractionWebSocket) {
     extractionWebSocket.close()
   }

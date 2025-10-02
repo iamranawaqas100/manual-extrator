@@ -10,6 +10,11 @@
     <!-- Title Bar -->
     <div class="title-bar">
         <div class="title-bar-left">
+            <div class="browser-nav-controls">
+                <button class="nav-btn" id="backBtn" title="Back">←</button>
+                <button class="nav-btn" id="forwardBtn" title="Forward">→</button>
+                <button class="nav-btn" id="refreshBtn" title="Refresh">⟳</button>
+            </div>
         </div>
         <div class="title-bar-center">
             <div class="url-bar">
@@ -23,109 +28,10 @@
     </div>
 
     <div class="app-container">
-        <!-- Navigation Panel -->
-        <div class="navigation-panel">
-            <div class="panel-header">
-                <h3>Extraction Tools</h3>
-            </div>
-            
-            <!-- Mode Selection -->
-            <div class="mode-section">
-                <label class="section-label">Extraction Mode</label>
-                <div class="mode-buttons">
-                    <button class="mode-btn active" data-mode="manual">
-                        <span class="mode-icon">✋</span>
-                        <span>Manual</span>
-                    </button>
-                    <button class="mode-btn" data-mode="template">
-                        <span class="mode-icon">📋</span>
-                        <span>Template</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Field Selection -->
-            <div class="field-section">
-                <label class="section-label">Data Fields</label>
-                <div class="field-buttons">
-                    <button class="field-btn" data-field="title">
-                        <span class="field-icon">📝</span>
-                        <span>Title</span>
-                    </button>
-                    <button class="field-btn" data-field="description">
-                        <span class="field-icon">📄</span>
-                        <span>Description</span>
-                    </button>
-                    <button class="field-btn" data-field="image">
-                        <span class="field-icon">🖼️</span>
-                        <span>Image</span>
-                    </button>
-                    <button class="field-btn" data-field="price">
-                        <span class="field-icon">💰</span>
-                        <span>Price</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Template Info (hidden by default) -->
-            <div class="template-info" id="templateInfo" style="display: none;">
-                <label class="section-label">Template Status</label>
-                <div class="template-fields">
-                    <div class="template-field" data-field="title">
-                        <span>Title</span>
-                        <span class="status">Not set</span>
-                    </div>
-                    <div class="template-field" data-field="description">
-                        <span>Description</span>
-                        <span class="status">Not set</span>
-                    </div>
-                    <div class="template-field" data-field="image">
-                        <span>Image</span>
-                        <span class="status">Not set</span>
-                    </div>
-                    <div class="template-field" data-field="price">
-                        <span>Price</span>
-                        <span class="status">Not set</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="action-section">
-                <button class="action-btn primary" id="extractModeBtn">
-                    <span class="btn-icon">🎯</span>
-                    <span>Extract Mode</span>
-                </button>
-                <button class="action-btn secondary" id="findSimilarBtn" style="display: none;">
-                    <span class="btn-icon">🔍</span>
-                    <span>Find Similar</span>
-                </button>
-                <button class="action-btn secondary" id="clearBtn">
-                    <span class="btn-icon">🗑️</span>
-                    <span>Clear All</span>
-                </button>
-                <button class="action-btn primary" id="exportBtn">
-                    <span class="btn-icon">📤</span>
-                    <span>Export Data</span>
-                </button>
-            </div>
-        </div>
-
         <!-- Main Content Area -->
         <div class="main-content">
             <!-- Browser View Container -->
             <div class="browser-container">
-                <div class="browser-header">
-                    <div class="browser-controls">
-                        <button id="backBtn" class="browser-btn" title="Back">←</button>
-                        <button id="forwardBtn" class="browser-btn" title="Forward">→</button>
-                        <button id="refreshBtn" class="browser-btn" title="Refresh">⟳</button>
-                    </div>
-                    <div class="browser-url" id="browserUrl">No page loaded</div>
-                    <div class="browser-actions">
-                       
-                    </div>
-                </div>
                 <div class="browser-view" id="browserView">
                     <webview id="webview" 
                              src="about:blank" 
@@ -165,6 +71,95 @@
                 <button class="control-btn highlight-toggle" id="toggleHighlightsBtn" style="display: none;">
                     <span>Hide Highlights</span>
                 </button>
+            </div>
+
+            <!-- Extraction Controls (shown when Add Item is clicked) -->
+            <div class="extraction-controls" id="extractionControls" style="display: none;">
+                <div class="extraction-controls-header">
+                    <h4>Extraction Tools</h4>
+                    <button class="close-extraction-btn" id="closeExtractionBtn">×</button>
+                </div>
+
+                <!-- Mode Selection -->
+                <div class="mode-section">
+                    <label class="section-label">Extraction Mode</label>
+                    <div class="mode-buttons">
+                        <button class="mode-btn active" data-mode="manual">
+                            <span class="mode-icon">✋</span>
+                            <span>Manual</span>
+                        </button>
+                        <button class="mode-btn" data-mode="template">
+                            <span class="mode-icon">📋</span>
+                            <span>Template</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Field Selection -->
+                <div class="field-section">
+                    <label class="section-label">Data Fields</label>
+                    <div class="field-buttons">
+                        <button class="field-btn" data-field="title">
+                            <span class="field-icon">📝</span>
+                            <span>Title</span>
+                        </button>
+                        <button class="field-btn" data-field="description">
+                            <span class="field-icon">📄</span>
+                            <span>Description</span>
+                        </button>
+                        <button class="field-btn" data-field="image">
+                            <span class="field-icon">🖼️</span>
+                            <span>Image</span>
+                        </button>
+                        <button class="field-btn" data-field="price">
+                            <span class="field-icon">💰</span>
+                            <span>Price</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Template Info (hidden by default) -->
+                <div class="template-info" id="templateInfo" style="display: none;">
+                    <label class="section-label">Template Status</label>
+                    <div class="template-fields">
+                        <div class="template-field" data-field="title">
+                            <span>Title</span>
+                            <span class="status">Not set</span>
+                        </div>
+                        <div class="template-field" data-field="description">
+                            <span>Description</span>
+                            <span class="status">Not set</span>
+                        </div>
+                        <div class="template-field" data-field="image">
+                            <span>Image</span>
+                            <span class="status">Not set</span>
+                        </div>
+                        <div class="template-field" data-field="price">
+                            <span>Price</span>
+                            <span class="status">Not set</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-section">
+                    <button class="action-btn primary" id="extractModeBtn">
+                        <span class="btn-icon">🎯</span>
+                        <span>Extract Mode</span>
+                    </button>
+                    <button class="action-btn secondary" id="findSimilarBtn" style="display: none;">
+                        <span class="btn-icon">🔍</span>
+                        <span>Find Similar</span>
+                    </button>
+                    <button class="action-btn secondary" id="clearBtn">
+                        <span class="btn-icon">🗑️</span>
+                        <span>Clear All</span>
+                    </button>
+                    <button class="action-btn primary" id="exportBtn">
+                        <span class="btn-icon">📤</span>
+                        <span>Export Data</span>
+                    </button>
+                </div>
             </div>
             
             <div class="filling-status" id="fillingStatus" style="display: none;">
