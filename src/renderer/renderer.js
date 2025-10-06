@@ -6,10 +6,6 @@ class DataExtractorApp {
         this.selectedField = null
         this.isSelecting = false
         this.currentItemId = null // ID of the item currently being filled
-        this.currentExtractionSession = null
-        this.extractionLogs = []
-        this.progressAnimationTimer = null
-        this.currentProgress = 0
         this.highlightsVisible = false
         
         this.init()
@@ -45,9 +41,6 @@ class DataExtractorApp {
         
         console.log('Data Extractor App initialized')
         
-        // Set up extraction log listener
-        this.setupExtractionLogListener()
-        
         // Set up update log listener
         this.setupUpdateLogListener()
         
@@ -81,32 +74,132 @@ class DataExtractorApp {
     setupWebview() {
         const webview = document.getElementById('webview')
         
+        // Track loading state to prevent infinite loops
+        this.loadingCount = 0
+        this.lastLoadTime = Date.now()
+        this.visibilityFixApplied = false
+        
         // Wait for webview to be ready before setting properties
         webview.addEventListener('dom-ready', () => {
-            console.log('Webview DOM ready, setting up communication...')
+            console.log('✅ Webview DOM ready, setting up communication...')
             
-            // Try to set up preload if not already done
-            if (!webview.getWebPreferences) {
-                console.log('Webview ready for interaction')
-            }
+            // Wait a bit for Cloudflare redirects to complete
+            setTimeout(() => {
+                // Check if page is rendering properly
+                webview.executeJavaScript(`
+                    (function() {
+                        const info = {
+                            url: window.location.href,
+                            title: document.title,
+                            bodyLength: document.body ? document.body.innerHTML.length : 0,
+                            bodyVisible: document.body ? window.getComputedStyle(document.body).display !== 'none' : false,
+                            bodyBackground: document.body ? window.getComputedStyle(document.body).backgroundColor : 'unknown',
+                            htmlVisible: document.documentElement ? window.getComputedStyle(document.documentElement).display !== 'none' : false,
+                            hasCloudflare: !!document.querySelector('[data-translate="checking_browser"]') || document.body?.textContent.includes('Checking your browser'),
+                            visibleText: document.body?.textContent.substring(0, 200) || 'NO TEXT'
+                        };
+                        return info;
+                    })();
+                `)
+                .then(info => {
+                    console.log('📊 Page Debug Info:', info)
+                    if (info.hasCloudflare) {
+                        console.log('🔒 Cloudflare challenge still present, waiting...')
+                    } else if (info.bodyLength === 0) {
+                        console.warn('⚠️ Page body is empty!')
+                    } else if (!info.bodyVisible) {
+                        console.warn('⚠️ Page body is hidden!')
+                        console.log('🎨 Body background:', info.bodyBackground)
+                        // Try to force visibility
+                        this.forcePageVisibility(webview)
+                    } else {
+                        console.log('✅ Page appears to be rendering correctly')
+                        console.log('📝 Visible text preview:', info.visibleText)
+                        // Even if it looks good, ensure no gray overlays
+                        this.forcePageVisibility(webview)
+                    }
+                })
+                .catch(err => console.error('❌ Cannot check page:', err))
+            }, 1000) // Wait 1 second after DOM ready
         })
         
         // Add console message listener for debugging
         webview.addEventListener('console-message', (e) => {
-            console.log(`[Webview ${e.level}]:`, e.message)
+            const prefix = e.level === 0 ? '📘' : e.level === 1 ? '⚠️' : '❌'
+            console.log(`${prefix} [Webview]:`, e.message)
         })
         
         // Log navigation events
         webview.addEventListener('did-start-loading', () => {
-            console.log('Webview started loading')
+            console.log('🔄 Webview started loading')
+            this.updateStatus('Loading...')
+            
+            // Track loading to detect infinite redirect loops
+            this.loadingCount++
+            const timeSinceLastLoad = Date.now() - this.lastLoadTime
+            this.lastLoadTime = Date.now()
+            
+            // Reset counter if enough time has passed
+            if (timeSinceLastLoad > 5000) {
+                this.loadingCount = 1
+            }
+            
+            // Detect redirect loop
+            if (this.loadingCount > 10) {
+                console.error('🔄 Too many redirects detected! Stopping...')
+                this.updateStatus('Too many redirects - please try another site')
+                webview.stop()
+                this.loadingCount = 0
+            }
         })
         
         webview.addEventListener('did-stop-loading', () => {
-            console.log('Webview stopped loading')
+            console.log('✅ Webview stopped loading')
+            this.updateStatus('Page loaded')
+            
+            // Additional check after page finishes loading
+            // Some sites need extra time after Cloudflare
+            setTimeout(() => {
+                webview.executeJavaScript('document.body ? document.body.innerHTML.length : 0')
+                    .then(length => {
+                        if (length < 1000) {
+                            console.warn('⚠️ Page may not be fully loaded, applying visibility fix...')
+                            this.forcePageVisibility(webview)
+                        }
+                    })
+                    .catch(() => {})
+            }, 2000) // Wait 2 seconds after page stops loading
         })
         
         webview.addEventListener('did-fail-load', (e) => {
-            console.error('Webview load failed:', e.errorCode, e.errorDescription)
+            if (e.errorCode !== -3) { // -3 is user abort
+                console.error('❌ Webview load failed:', e.errorCode, e.errorDescription)
+                this.updateStatus(`Load failed: ${e.errorDescription}`)
+            }
+        })
+        
+        // Check for renderer crashes
+        webview.addEventListener('render-process-gone', (e) => {
+            console.error('💥 Renderer process crashed!', e.details)
+            this.updateStatus('Page crashed - reloading...')
+            
+            // Auto-reload after crash
+            setTimeout(() => {
+                const currentUrl = webview.src
+                if (currentUrl && currentUrl !== 'about:blank') {
+                    console.log('🔄 Auto-reloading after crash...')
+                    webview.reload()
+                }
+            }, 1000)
+        })
+        
+        // Monitor page responsiveness
+        webview.addEventListener('unresponsive', () => {
+            console.warn('⏸️ Page became unresponsive')
+        })
+        
+        webview.addEventListener('responsive', () => {
+            console.log('▶️ Page became responsive again')
         })
     }
 
@@ -188,9 +281,6 @@ class DataExtractorApp {
             this.verifyAllItems()
         })
 
-        document.getElementById('toggleHighlightsBtn').addEventListener('click', () => {
-            this.toggleHighlights()
-        })
 
         // Extraction controls toggle
         const closeExtractionBtn = document.getElementById('closeExtractionBtn')
@@ -298,63 +388,11 @@ class DataExtractorApp {
             fullUrl = 'https://' + url
         }
 
-        // Skip dialog if requested (for protocol handler)
-        let extractionMethod = 'manual'
-        if (!skipDialog) {
-            // Ask user for extraction method
-            try {
-                extractionMethod = await window.electronAPI.showExtractionDialog()
-            } catch (error) {
-                console.log('Dialog cancelled or error:', error)
-                return
-            }
-        }
-
-        // Process based on extraction method
+        // Manual extraction only
         try {
-            
-            if (extractionMethod === 'ai') {
-                // Store current URL for AI extraction
-                this.currentUrl = fullUrl
-                this.currentExtractionSession = null // Will be set when we receive logs from backend
-                this.extractionLogs = []
-                this.currentProgress = 0 // Reset progress counter
-                
-                // Show aesthetic loading interface
-                this.showAestheticLoading()
-                this.updateStatus('Starting AI extraction...')
-                
-                try {
-                    const result = await window.electronAPI.aiExtract(fullUrl)
-                    if (result.success && result.data) {
-                        // Set session ID from backend response
-                        if (result.data.session_id) {
-                            this.currentExtractionSession = result.data.session_id
-                        }
-                        
-                        // If no real-time logs were received, process immediately
-                        if (this.extractionLogs.length === 0) {
-                            await this.processAIExtractedData(result.data)
-                            this.updateStatus('AI extraction completed successfully')
-                            setTimeout(() => {
-                                this.hideAestheticLoading()
-                                this.startManualExtraction()
-                            }, 1000)
-                        }
-                    } else {
-                        this.updateStatus(`AI extraction failed: ${result.error || 'Unknown error'}`)
-                        this.hideAestheticLoading()
-                    }
-                } catch (error) {
-                    this.updateStatus(`AI extraction error: ${error.message}`)
-                    this.hideAestheticLoading()
-                }
-            } else {
-                // Manual extraction
-                this.showLoading('Loading page...')
-                this.loadUrlInWebview(fullUrl)
-                this.hideLoading()
-            }
+            this.showLoading('Loading page...')
+            this.loadUrlInWebview(fullUrl)
+            this.hideLoading()
         } catch (error) {
             this.updateStatus(`Error: ${error.message}`)
             this.hideLoading()
@@ -619,64 +657,6 @@ class DataExtractorApp {
         `;
     }
 
-    async processAIExtractedData(data) {
-        try {
-            console.log('Processing AI extracted data:', data)
-            
-            // Check if data has menu_sections property (from backend response)
-            let menuSections = []
-            if (data.menu_sections) {
-                menuSections = data.menu_sections
-            } else if (data.menuSections) {
-                menuSections = data.menuSections
-            } else if (Array.isArray(data)) {
-                // Legacy format support
-                menuSections = [{ category: 'Menu Items', items: data }]
-            } else {
-                console.warn('Unknown data format:', data)
-                this.updateStatus('No menu items found in AI extraction')
-                return
-            }
-            
-            let totalItems = 0
-            const currentUrl = this.getCurrentUrl()
-            
-            // Process each menu section
-            for (const section of menuSections) {
-                const categoryName = section.category || 'Uncategorized'
-                const items = section.items || []
-                
-                for (const item of items) {
-                    // Transform menu item to our extraction schema (simplified - no customizations/options)
-                    const extractedItem = {
-                        url: currentUrl,
-                        title: item.name || item.title || '',
-                        description: item.description || '',
-                        image: item.image || item.image_url || '',
-                        price: item.basePrice || item.price || '',
-                        category: categoryName,
-                        verified: false, // AI extracted items need manual verification
-                        timestamp: new Date().toISOString()
-                    }
-                    
-                    const savedItem = await window.electronAPI.saveExtractedData(extractedItem)
-                    this.extractedData.push(savedItem)
-                    totalItems++
-                }
-            }
-            
-            this.updateDataDisplay()
-            this.updateStatus(`AI extracted ${totalItems} items from ${menuSections.length} categories`)
-            
-            // Log usage info if available
-            if (data.usage) {
-                console.log('AI extraction usage:', data.usage)
-            }
-        } catch (error) {
-            console.error('Error processing AI extracted data:', error)
-            this.updateStatus(`Error saving AI data: ${error.message}`)
-        }
-    }
 
     getCurrentUrl() {
         // Try to get current URL from webview if available
@@ -1644,12 +1624,6 @@ class DataExtractorApp {
         document.getElementById('loadingOverlay').style.display = 'none'
     }
     
-    setupExtractionLogListener() {
-        // Listen for real-time extraction logs
-        window.electronAPI.onExtractionLog((event, logData) => {
-            this.handleExtractionLog(logData)
-        })
-    }
     
     setupUpdateLogListener() {
         // Listen for update logs from main process
@@ -1701,582 +1675,77 @@ class DataExtractorApp {
         }
     }
     
-    handleExtractionLog(logData) {
-        console.log('Received log:', logData) // Debug log
-        
-        // Store logs for this session or if no session filtering needed
-        if (!this.currentExtractionSession || logData.session_id === this.currentExtractionSession) {
-            this.extractionLogs.push(logData)
-            this.updateExtractionProgress(logData)
-            
-            // Update session ID if we get one from backend
-            if (logData.session_id && !this.currentExtractionSession) {
-                this.currentExtractionSession = logData.session_id
-            }
-            
-            // Handle completion
-            if (logData.type === 'complete' && logData.data && logData.data.result) {
-                this.processAIExtractedData(logData.data.result)
-                
-                // Ensure progress reaches 100% with satisfying animation
-                this.animateProgressTo(100)
-                
-                // Add completion delay for satisfaction
-                setTimeout(() => {
-                    const statusText = document.querySelector('.status-text')
-                    if (statusText) {
-                        this.typeText(statusText, '🎯 Preparing manual verification...')
-                    }
-                }, 1000)
-                
-                setTimeout(() => {
-                    this.hideAestheticLoading()
-                    this.startManualExtraction()
-                }, 2500) // Longer delay for satisfaction
-            }
-            
-            // Handle errors
-            if (logData.type === 'error') {
-                this.updateStatus(`AI Extraction Error: ${logData.message}`)
-                this.hideAestheticLoading()
-            }
-        }
-    }
-    
-    updateExtractionProgress(logData) {
-        console.log('Updating extraction progress:', logData.message) // Debug log
-        
-        const loadingContent = document.querySelector('.loading-content')
-        const progressBar = document.querySelector('.progress-bar')
-        const progressFill = document.querySelector('.progress-fill')
-        const statusText = document.querySelector('.status-text')
-        const logsContainer = document.querySelector('.extraction-logs')
-        
-        // Update UI status regardless of loading interface
-        this.updateStatus(logData.message)
-        
-        if (!loadingContent) {
-            console.log('Loading content not found, probably not in aesthetic loading mode')
+
+
+    forcePageVisibility(webview) {
+        // Prevent multiple applications
+        if (this.visibilityFixApplied) {
+            console.log('🎨 Visibility fix already applied, skipping...')
             return
         }
         
-        // Animate progress bar smoothly and slowly for hacky feel
-        this.animateProgressTo(logData.progress)
+        console.log('🎨 Forcing page visibility...')
+        this.visibilityFixApplied = true
         
-        // Update status text directly to prevent encoding issues
-        if (statusText) {
-            statusText.textContent = logData.message || ''
-        }
-        
-        // Add log entry with hacky terminal style
-        if (logsContainer) {
-            const logEntry = document.createElement('div')
-            const messageType = this.getLogTypeFromMessage(logData.message)
-            logEntry.className = `log-entry log-${logData.type} log-type-${messageType}`
-            
-            // Add timestamp like a real terminal
-            const timestamp = new Date().toLocaleTimeString('en-US', { 
-                hour12: false, 
-                hour: '2-digit', 
-                minute: '2-digit', 
-                second: '2-digit' 
-            })
-            
-            logEntry.innerHTML = `
-                <span class="log-time">[${timestamp}]</span>
-                <span class="log-icon">${this.getLogIcon(logData.type)}</span>
-                <span class="log-message">${logData.message}</span>
-            `
-            
-            logsContainer.appendChild(logEntry)
-            logsContainer.scrollTop = logsContainer.scrollHeight
-            
-            // Add blinking cursor effect for active log
-            logEntry.style.opacity = '0'
-            setTimeout(() => {
-                logEntry.style.opacity = '1'
-                logEntry.style.transition = 'opacity 0.3s ease'
-            }, 100)
-            
-            console.log('Added log entry:', logData.message)
-        }
-    }
-    
-    animateProgressTo(targetProgress) {
-        const progressFill = document.querySelector('.progress-fill')
-        if (!progressFill) return
-        
-        // Clear any existing animation
-        if (this.progressAnimationTimer) {
-            clearInterval(this.progressAnimationTimer)
-        }
-        
-        // Animate slowly for hacky feel
-        const startProgress = this.currentProgress
-        const increment = (targetProgress - startProgress) / 20 // Slower progression
-        let steps = 0
-        
-        this.progressAnimationTimer = setInterval(() => {
-            steps++
-            const newProgress = startProgress + (increment * steps)
-            
-            if (newProgress >= targetProgress || steps >= 20) {
-                this.currentProgress = targetProgress
-                progressFill.style.width = `${targetProgress}%`
-                clearInterval(this.progressAnimationTimer)
-                console.log(`Progress animated to ${targetProgress}%`)
-            } else {
-                this.currentProgress = newProgress
-                progressFill.style.width = `${newProgress}%`
-            }
-        }, 100) // Update every 100ms for smooth but slow animation
-    }
-    
-    typeText(element, text) {
-        // Disabled typing effect to prevent encoding issues - just set text directly
-        element.textContent = text
-    }
-    
-    getLogIcon(type) {
-        switch (type) {
-            case 'info': return '[INFO]'
-            case 'complete': return '[DONE]'
-            case 'error': return '[ERROR]'
-            case 'warning': return '[WARN]'
-            default: return '[LOG]'
-        }
-    }
-    
-    getLogTypeFromMessage(message) {
-        // Categorize logs based on message content for better styling
-        if (message.includes('AI') || message.includes('agent') || message.includes('model')) {
-            return 'ai'
-        } else if (message.includes('browser') || message.includes('Chromium') || message.includes('website')) {
-            return 'browser'
-        } else if (message.includes('extraction') || message.includes('data') || message.includes('menu')) {
-            return 'data'
-        } else if (message.includes('action') || message.includes('starting') || message.includes('loading')) {
-            return 'action'
-        }
-        return 'default'
-    }
-    
-    showAestheticLoading() {
-        const aiLoadingOverlay = document.getElementById('aiLoadingOverlay')
-        // Clear any existing content first to prevent encoding issues
-        aiLoadingOverlay.innerHTML = ''
-        aiLoadingOverlay.textContent = ''
-        // Simplified loading to prevent encoding issues
-        aiLoadingOverlay.innerHTML = `
-            <div class="loading-container">
-                <div class="loading-content">
-                    <div class="loading-header">
-                        <h2>AI Menu Extraction</h2>
-                        <p>AI is analyzing the menu and extracting items</p>
-                    </div>
-                    
-                    <div class="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-fill"></div>
-                        </div>
-                        <div class="status-text">Starting extraction</div>
-                    </div>
-                    
-                    <div class="extraction-logs-container">
-                        <h3>Progress</h3>
-                        <div class="extraction-logs"></div>
-                    </div>
-                </div>
-            </div>
-        `
-        aiLoadingOverlay.style.display = 'flex'
-    }
-    
-    hideAestheticLoading() {
-        const aiLoadingOverlay = document.getElementById('aiLoadingOverlay')
-        aiLoadingOverlay.style.display = 'none'
-    }
-    
-    startManualExtraction() {
-        // Show manual extraction interface for verification
-        this.updateStatus('Loading page for manual verification...')
-        
-        // Load the same URL in webview for manual QC
-        this.loadUrlInWebview(this.currentUrl)
-        
-        // Wait for page to load, then highlight AI-extracted items
+        // Reset flag after 10 seconds
         setTimeout(() => {
-            this.highlightAIExtractedItems()
-            this.showHighlightToggleButton()
-            this.updateStatus('AI extraction complete! Green = AI extracted, Red dashed = AI missed. Use highlights to guide manual QC.')
-        }, 3000) // Wait longer for page to fully load
-    }
-
-    highlightAIExtractedItems() {
-        const webview = document.getElementById('webview')
-        if (!webview || this.extractedData.length === 0) return
-
-        // Create detailed extracted data for precise DOM matching
-        const extractedItems = this.extractedData.map(item => ({
-            title: (item.title || '').toLowerCase().trim(),
-            description: (item.description || '').toLowerCase().trim(),
-            price: (item.price || '').replace(/[^\d.]/g, ''),
-            category: (item.category || '').toLowerCase().trim(),
-            fullText: `${item.title || ''} ${item.description || ''} ${item.price || ''}`.toLowerCase().trim()
-        })).filter(item => item.title || item.description || item.price)
-
-        // Advanced DOM analysis and highlighting script
-        const domAnalysisScript = `
+            this.visibilityFixApplied = false
+        }, 10000)
+        
+        // Inject CSS and JavaScript to force page rendering (SAFE VERSION)
+        const fixScript = `
             (function() {
-                console.log('Starting DOM analysis for AI extraction comparison...')
-                
-                // Remove any existing highlights
-                document.querySelectorAll('.ai-extracted-highlight, .ai-missed-highlight').forEach(el => {
-                    el.classList.remove('ai-extracted-highlight', 'ai-missed-highlight')
-                })
-                
-                // Add advanced highlight styles
-                if (!document.getElementById('ai-highlight-styles')) {
-                    const style = document.createElement('style')
-                    style.id = 'ai-highlight-styles'
-                    style.textContent = \`
-                        .ai-extracted-highlight {
-                            background-color: rgba(77, 234, 199, 0.2) !important;
-                            border: 2px solid #4DEAC7 !important;
-                            border-radius: 6px !important;
-                            box-shadow: 0 0 15px rgba(77, 234, 199, 0.4) !important;
-                            position: relative !important;
-                            margin: 2px !important;
-                        }
-                        .ai-extracted-highlight::before {
-                            content: "AI EXTRACTED";
-                            position: absolute;
-                            top: -22px;
-                            left: 0;
-                            background: #4DEAC7;
-                            color: #0f172a;
-                            padding: 2px 6px;
-                            border-radius: 3px;
-                            font-size: 10px;
-                            font-weight: bold;
-                            z-index: 1000;
-                            white-space: nowrap;
-                            font-family: monospace;
-                        }
-                        .ai-missed-highlight {
-                            background-color: rgba(239, 68, 68, 0.2) !important;
-                            border: 2px dashed #EF4444 !important;
-                            border-radius: 6px !important;
-                            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4) !important;
-                            position: relative !important;
-                            margin: 2px !important;
-                        }
-                        .ai-missed-highlight::before {
-                            content: "NOT EXTRACTED";
-                            position: absolute;
-                            top: -22px;
-                            left: 0;
-                            background: #EF4444;
-                            color: white;
-                            padding: 2px 6px;
-                            border-radius: 3px;
-                            font-size: 10px;
-                            font-weight: bold;
-                            z-index: 1000;
-                            white-space: nowrap;
-                            font-family: monospace;
-                        }
-                        .dom-analysis-info {
-                            position: fixed;
-                            top: 20px;
-                            right: 20px;
-                            background: rgba(15, 23, 42, 0.95);
-                            color: #f1f5f9;
-                            padding: 16px;
-                            border-radius: 8px;
-                            border: 1px solid #334155;
-                            font-size: 12px;
-                            z-index: 10000;
-                            max-width: 280px;
-                            font-family: monospace;
-                            line-height: 1.4;
-                        }
-                        .ai-highlight-toggle {
-                            position: fixed;
-                            bottom: 20px;
-                            right: 20px;
-                            background: #1e293b;
-                            color: #f1f5f9;
-                            border: 1px solid #4DEAC7;
-                            padding: 8px 12px;
-                            border-radius: 6px;
-                            cursor: pointer;
-                            font-size: 11px;
-                            z-index: 10000;
-                            font-family: monospace;
-                        }
-                    \`
-                    document.head.appendChild(style)
-                }
-                
-                // AI extracted items data
-                const extractedItems = ${JSON.stringify(extractedItems)}
-                
-                // Advanced text matching functions
-                function normalizeText(text) {
-                    return text.toLowerCase()
-                        .replace(/[^a-z0-9\\s]/g, ' ')
-                        .replace(/\\s+/g, ' ')
-                        .trim()
-                }
-                
-                function extractPriceNumbers(text) {
-                    const matches = text.match(/[\\d]+\\.?[\\d]*/g)
-                    return matches ? matches.join('') : ''
-                }
-                
-                function calculateSimilarity(str1, str2) {
-                    const words1 = str1.split(' ').filter(w => w.length > 2)
-                    const words2 = str2.split(' ').filter(w => w.length > 2)
+                try {
+                    // Add minimal CSS fix without breaking the page
+                    const style = document.createElement('style');
+                    style.id = 'electron-visibility-fix';
                     
-                    if (words1.length === 0 || words2.length === 0) return 0
-                    
-                    let matches = 0
-                    words1.forEach(word1 => {
-                        if (words2.some(word2 => word2.includes(word1) || word1.includes(word2))) {
-                            matches++
-                        }
-                    })
-                    
-                    return matches / Math.max(words1.length, words2.length)
-                }
-                
-                // Find all potential menu/product elements using advanced selectors
-                const potentialSelectors = [
-                    // Common menu/product containers
-                    '[class*="item"]', '[class*="product"]', '[class*="menu"]', '[class*="card"]',
-                    '[class*="dish"]', '[class*="food"]', '[class*="meal"]', '[class*="entry"]',
-                    '[id*="item"]', '[id*="product"]', '[id*="menu"]', '[id*="card"]',
-                    
-                    // Semantic elements
-                    'article', 'section[class*="menu"]', 'div[class*="menu"]',
-                    
-                    // Price-containing elements
-                    '[class*="price"]', '[data-price]', '[class*="cost"]',
-                    
-                    // Layout patterns
-                    '.row > div', '.grid > div', '.list > div', '.items > div',
-                    'ul > li', 'ol > li',
-                    
-                    // Restaurant specific
-                    '[class*="restaurant"]', '[class*="cafe"]', '[class*="order"]'
-                ]
-                
-                const allElements = document.querySelectorAll(potentialSelectors.join(','))
-                const menuElements = Array.from(allElements).filter(el => {
-                    const text = el.textContent || ''
-                    const hasPrice = /[\\$£€¥₹₽]\\s*[\\d]+|[\\d]+\\s*[\\$£€¥₹₽]|rs\\s*[\\d]+|[\\d]+\\s*rs/i.test(text)
-                    const hasMenuWords = /menu|dish|food|meal|item|product|order|buy|add.*cart/i.test(text)
-                    const isReasonableLength = text.length > 10 && text.length < 1000
-                    const hasTitle = /[a-zA-Z]{3,}/.test(text)
-                    
-                    return (hasPrice || hasMenuWords) && isReasonableLength && hasTitle
-                })
-                
-                console.log(\`Found \${menuElements.length} potential menu elements in DOM\`)
-                
-                let extractedCount = 0
-                let missedCount = 0
-                let processedElements = []
-                
-                // Analyze each potential menu element
-                menuElements.forEach((element, index) => {
-                    const elementText = normalizeText(element.textContent || '')
-                    const elementPrice = extractPriceNumbers(element.textContent || '')
-                    
-                    // Skip if element is too small or empty
-                    if (elementText.length < 5) return
-                    
-                    // Check against all extracted items
-                    let bestMatch = null
-                    let bestScore = 0
-                    
-                    extractedItems.forEach(item => {
-                        let score = 0
-                        
-                        // Title matching (high weight)
-                        if (item.title && elementText.includes(normalizeText(item.title))) {
-                            score += 3
-                        }
-                        
-                        // Price matching (high weight)
-                        if (item.price && elementPrice && elementPrice.includes(item.price)) {
-                            score += 3
-                        }
-                        
-                        // Description matching (medium weight)
-                        if (item.description) {
-                            const descSimilarity = calculateSimilarity(elementText, normalizeText(item.description))
-                            score += descSimilarity * 2
-                        }
-                        
-                        // Full text similarity (low weight)
-                        const textSimilarity = calculateSimilarity(elementText, normalizeText(item.fullText))
-                        score += textSimilarity
-                        
-                        if (score > bestScore) {
-                            bestScore = score
-                            bestMatch = item
-                        }
-                    })
-                    
-                    // Decision threshold
-                    const threshold = 2.0
-                    
-                    if (bestScore >= threshold) {
-                        element.classList.add('ai-extracted-highlight')
-                        extractedCount++
-                        processedElements.push({
-                            type: 'extracted',
-                            element,
-                            score: bestScore,
-                            match: bestMatch
-                        })
-                    } else {
-                        element.classList.add('ai-missed-highlight')
-                        missedCount++
-                        processedElements.push({
-                            type: 'missed',
-                            element,
-                            score: bestScore,
-                            text: elementText.substring(0, 50) + '...'
-                        })
+                    // Don't add if already exists
+                    if (document.getElementById('electron-visibility-fix')) {
+                        return 'Already applied';
                     }
-                })
-                
-                // Create detailed analysis info box
-                const existingInfo = document.querySelector('.dom-analysis-info')
-                if (existingInfo) existingInfo.remove()
-                
-                const infoBox = document.createElement('div')
-                infoBox.className = 'dom-analysis-info'
-                infoBox.innerHTML = \`
-                    <strong>DOM Analysis Results</strong><br><br>
-                    Total DOM Elements: \${menuElements.length}<br>
-                    AI Extracted: \${extractedCount}<br>
-                    Missed by AI: \${missedCount}<br>
-                    Coverage: \${Math.round((extractedCount / Math.max(menuElements.length, 1)) * 100)}%<br><br>
-                    <strong>Legend:</strong><br>
-                    Green = AI found this<br>
-                    Red dashed = AI missed this<br><br>
-                    <small>Click to hide in 15s</small>
-                \`
-                
-                infoBox.addEventListener('click', () => infoBox.remove())
-                document.body.appendChild(infoBox)
-                
-                // Auto-remove info box
-                setTimeout(() => {
-                    if (infoBox.parentNode) infoBox.remove()
-                }, 15000)
-                
-                // Log detailed results
-                console.log(\`DOM Analysis Complete:\`)
-                console.log(\`   Total elements found: \${menuElements.length}\`)
-                console.log(\`   AI extracted: \${extractedCount}\`)
-                console.log(\`   AI missed: \${missedCount}\`)
-                console.log(\`   Coverage: \${Math.round((extractedCount / Math.max(menuElements.length, 1)) * 100)}%\`)
-                
-                return {
-                    totalElements: menuElements.length,
-                    extractedCount,
-                    missedCount,
-                    coverage: Math.round((extractedCount / Math.max(menuElements.length, 1)) * 100)
+                    
+                    style.textContent = \`
+                        /* Minimal visibility fixes */
+                        body, html {
+                            display: block !important;
+                            visibility: visible !important;
+                        }
+                        
+                        /* Hide Cloudflare challenge after success */
+                        .cf-browser-verification,
+                        #cf-wrapper,
+                        .cf-challenge-running {
+                            display: none !important;
+                        }
+                    \`;
+                    
+                    if (document.head) {
+                        document.head.appendChild(style);
+                    }
+                    
+                    // Gentle scroll to top
+                    if (window.scrollY > 100) {
+                        window.scrollTo({top: 0, behavior: 'smooth'});
+                    }
+                    
+                    console.log('✅ Visibility fix applied safely');
+                    return 'Visibility forced safely';
+                } catch (error) {
+                    console.error('❌ Visibility fix error:', error.message);
+                    return 'Error: ' + error.message;
                 }
-            })()
-        `
-
-        // Execute the DOM analysis script
-        webview.executeJavaScript(domAnalysisScript)
+            })();
+        `;
+        
+        webview.executeJavaScript(fixScript)
             .then(result => {
-                console.log('DOM Analysis Results:', result)
-                if (result) {
-                    this.updateStatus(`DOM Analysis: ${result.coverage}% coverage - ${result.extractedCount} found, ${result.missedCount} missed`)
-                }
+                console.log('✅ Force visibility result:', result)
             })
-            .catch(error => {
-                console.error('Error in DOM analysis:', error)
-                this.updateStatus('Error analyzing DOM - using fallback highlighting')
+            .catch(err => {
+                console.error('❌ Failed to force visibility:', err)
+                this.visibilityFixApplied = false // Allow retry on error
             })
-    }
-
-    showHighlightToggleButton() {
-        const toggleBtn = document.getElementById('toggleHighlightsBtn')
-        if (toggleBtn) {
-            toggleBtn.style.display = 'block'
-            this.highlightsVisible = true
-        }
-    }
-
-    toggleHighlights() {
-        const webview = document.getElementById('webview')
-        const toggleBtn = document.getElementById('toggleHighlightsBtn')
-        
-        if (!webview || !toggleBtn) return
-
-        this.highlightsVisible = !this.highlightsVisible
-
-        const toggleScript = `
-            (function() {
-                const extractedHighlights = document.querySelectorAll('.ai-extracted-highlight')
-                const missedHighlights = document.querySelectorAll('.ai-missed-highlight')
-                const infoBox = document.querySelector('.dom-analysis-info')
-                
-                if (${this.highlightsVisible}) {
-                    // Show all highlights
-                    extractedHighlights.forEach(el => {
-                        el.style.backgroundColor = 'rgba(77, 234, 199, 0.2)'
-                        el.style.border = '2px solid #4DEAC7'
-                        el.style.boxShadow = '0 0 15px rgba(77, 234, 199, 0.4)'
-                        el.style.borderRadius = '6px'
-                        el.style.position = 'relative'
-                    })
-                    missedHighlights.forEach(el => {
-                        el.style.backgroundColor = 'rgba(239, 68, 68, 0.2)'
-                        el.style.border = '2px dashed #EF4444'
-                        el.style.boxShadow = '0 0 15px rgba(239, 68, 68, 0.4)'
-                        el.style.borderRadius = '6px'
-                        el.style.position = 'relative'
-                    })
-                    if (infoBox) infoBox.style.display = 'block'
-                } else {
-                    // Hide all highlights
-                    extractedHighlights.forEach(el => {
-                        el.style.backgroundColor = 'transparent'
-                        el.style.border = 'none'
-                        el.style.boxShadow = 'none'
-                        el.style.position = 'static'
-                    })
-                    missedHighlights.forEach(el => {
-                        el.style.backgroundColor = 'transparent'
-                        el.style.border = 'none'
-                        el.style.boxShadow = 'none'
-                        el.style.position = 'static'
-                    })
-                    if (infoBox) infoBox.style.display = 'none'
-                }
-            })()
-        `
-
-        webview.executeJavaScript(toggleScript).catch(error => {
-            console.error('Error toggling highlights:', error)
-        })
-
-        // Update button text
-        const span = toggleBtn.querySelector('span')
-        span.textContent = this.highlightsVisible ? 'Hide Highlights' : 'Show Highlights'
-        
-        this.updateStatus(this.highlightsVisible ? 'Highlights shown' : 'Highlights hidden')
     }
 }
 

@@ -4,52 +4,26 @@ const { updateElectronApp } = require('update-electron-app')
 const path = require('path')
 const fs = require('fs')
 const http = require('http')
-const WebSocket = require('ws')
 
-// Expose a DevTools Protocol endpoint so external automation (e.g., Playwright)
-// can attach to this Electron instance instead of launching a separate Chromium
-app.commandLine.appendSwitch('remote-debugging-port', '9222')
-app.commandLine.appendSwitch('remote-allow-origins', '*')
+// Expose a DevTools Protocol endpoint only in development mode
+// In production, this could be detected by Cloudflare
+if (process.env.NODE_ENV === 'development' || process.env.ENABLE_CDP === 'true') {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222')
+  app.commandLine.appendSwitch('remote-allow-origins', '*')
+  console.log('CDP debugging enabled on port 9222')
+}
+
+// Add command line switches to make browser appear more legitimate
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+app.commandLine.appendSwitch('disable-features', 'IsolateOrigins,site-per-process')
+app.commandLine.appendSwitch('disable-site-isolation-trials')
 
 // Keep a global reference of the window object
 let mainWindow
 // In-memory data storage
 let extractedData = []
 let templates = []
-let aiView = null
-let aiViewActive = false
-let extractionWebSocket = null
 let updateCheckInProgress = false
-
-async function resolveCdpWsUrl() {
-  return new Promise((resolve) => {
-    try {
-      const options = { hostname: '127.0.0.1', port: 9222, path: '/json/version', method: 'GET' }
-      const req = http.request(options, (res) => {
-        let data = ''
-        res.on('data', (chunk) => { data += chunk })
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data)
-            const ws = json.webSocketDebuggerUrl
-            resolve(ws || 'http://127.0.0.1:9222')
-          } catch (e) {
-            console.warn('Error parsing CDP response:', e.message)
-            resolve('http://127.0.0.1:9222')
-          }
-        })
-      })
-      req.on('error', (err) => {
-        console.warn('CDP request error:', err.message)
-        resolve('http://127.0.0.1:9222')
-      })
-      req.end()
-    } catch (e) {
-      console.warn('CDP connection error:', e.message)
-      resolve('http://127.0.0.1:9222')
-    }
-  })
-}
 
 // Enable live reload for development
 if (process.env.NODE_ENV === 'development') {
@@ -91,14 +65,55 @@ function createWindow() {
   // Load the login page first
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'login.html'))
 
-  // Configure webview permissions
+  // Configure webview permissions and headers for realistic browser behavior
+  // Only modify CSP if it's blocking our app, don't remove it completely
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': ['']
-      }
-    })
+    const headers = { ...details.responseHeaders }
+    
+    // Don't completely remove CSP, just relax it if needed
+    // This prevents breaking sites that rely on CSP for functionality
+    if (headers['content-security-policy'] || headers['Content-Security-Policy']) {
+      // Keep CSP but ensure it doesn't block rendering
+      // We only modify it for our app, not for all sites
+    }
+    
+    callback({ responseHeaders: headers })
+  })
+  
+  // Add realistic request headers to bypass bot detection
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const headers = details.requestHeaders
+    
+    // CRITICAL: Remove X-Requested-With header - Cloudflare Turnstile ALWAYS fails with this
+    delete headers['X-Requested-With']
+    
+    // Remove headers that expose automation
+    delete headers['X-DevTools-Emulate-Network-Conditions-Client-Id']
+    
+    // Add realistic headers that browsers send (but don't override existing ones)
+    if (!headers['Accept-Language']) {
+      headers['Accept-Language'] = 'en-US,en;q=0.9'
+    }
+    if (!headers['Accept-Encoding']) {
+      headers['Accept-Encoding'] = 'gzip, deflate, br'
+    }
+    if (!headers['Sec-Fetch-Dest']) {
+      headers['Sec-Fetch-Dest'] = 'document'
+    }
+    if (!headers['Sec-Fetch-Mode']) {
+      headers['Sec-Fetch-Mode'] = 'navigate'
+    }
+    if (!headers['Sec-Fetch-Site']) {
+      headers['Sec-Fetch-Site'] = 'none'
+    }
+    if (!headers['Sec-Fetch-User']) {
+      headers['Sec-Fetch-User'] = '?1'
+    }
+    if (!headers['Upgrade-Insecure-Requests']) {
+      headers['Upgrade-Insecure-Requests'] = '1'
+    }
+    
+    callback({ requestHeaders: headers })
   })
 
   // Handle webview permission requests
@@ -106,64 +121,45 @@ function createWindow() {
     callback(true)
   })
 
-  // Enable webview preload scripts
+  // Enable webview preload scripts with stealth mode
   mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
-    // Delete the existing preload to avoid conflicts
-    delete webPreferences.preload
+    // Inject stealth preload script to bypass bot detection
+    webPreferences.preload = path.join(__dirname, 'preload', 'stealthPreload.js')
     
     // Enable necessary permissions
     webPreferences.nodeIntegration = false
-    webPreferences.contextIsolation = false
-    webPreferences.webSecurity = false
-    webPreferences.allowRunningInsecureContent = true
+    webPreferences.contextIsolation = true // Better security
+    webPreferences.webSecurity = true // Re-enable for legitimacy
+    webPreferences.sandbox = true // Enable sandbox for security
+    webPreferences.allowRunningInsecureContent = false
     webPreferences.javascript = true
     webPreferences.plugins = true
-    
-    // Allow the webview to execute JavaScript
     webPreferences.webviewTag = true
+    
+    // Prevent crashes by enabling better resource management
+    webPreferences.backgroundThrottling = false
+    webPreferences.offscreen = false
+    
+    // IMPORTANT: According to Cloudflare Community, use Electron's DEFAULT user agent
+    // Don't override it - let Electron use its natural user agent
+    // webPreferences.userAgent is NOT set here intentionally
+    
+    // Enable features that make the browser look more legitimate
+    webPreferences.enableBlinkFeatures = 'ExecutionContext'
+    webPreferences.experimentalFeatures = true
+    webPreferences.spellcheck = true
+    
+    console.log('Webview attached with stealth mode and default user agent')
   })
 
   // Block external window opens; keep navigation inside the app
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
-  // Ensure AI BrowserView is cleared on window close
-  mainWindow.on('close', () => {
-    try {
-      if (aiView) {
-        mainWindow.removeBrowserView(aiView)
-        aiView.destroy()
-        aiView = null
-      }
-    } catch (e) {
-      console.warn('Error cleaning up AI view:', e.message)
-    }
-  })
-
-  // Keep AI BrowserView bounds in sync when the window is resized
-  mainWindow.on('resize', () => {
-    try {
-      if (!aiView || aiViewActive) return
-      const bounds = mainWindow.getContentBounds()
-      const leftPaneWidth = 260
-      const rightPaneWidth = 360
-      const topBarHeight = 64
-      const x = leftPaneWidth
-      const y = topBarHeight
-      const width = Math.max(600, bounds.width - leftPaneWidth - rightPaneWidth)
-      const height = Math.max(400, bounds.height - topBarHeight)
-      aiView.setBounds({ x, y, width, height })
-    } catch (e) {
-      console.warn('Error resizing AI view:', e.message)
-    }
-  })
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
     mainWindow.focus()
-    
-    // Initialize WebSocket connection for extraction logs
-    initializeWebSocket()
     
     // Check for updates (only in production) - Professional Implementation with Detailed Logging
     if (!process.env.NODE_ENV || process.env.NODE_ENV === 'production') {
@@ -469,127 +465,8 @@ ipcMain.handle('export-data', async (event, format = 'json') => {
   return { success: false, canceled: true }
 })
 
-// AI Extraction API call
-ipcMain.handle('ai-extract', async (event, url) => {
-  const cdpUrl = await resolveCdpWsUrl()
-  return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({ url, cdpUrl })
-    
-    const options = {
-      hostname: '127.0.0.1',
-      port: 8000,
-      path: '/menu/collect-electron',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    }
-    
-    const req = http.request(options, (res) => {
-      let data = ''
-      
-      res.on('data', (chunk) => {
-        data += chunk
-      })
-      
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(data)
-          resolve({ success: true, data: result })
-        } catch (error) {
-          console.error('Error parsing AI response:', error.message)
-          resolve({ success: false, error: `Invalid response from AI service: ${error.message}` })
-        }
-      })
-    })
-    
-    req.on('error', (error) => {
-      resolve({ success: false, error: error.message })
-    })
-    
-    req.write(postData)
-    req.end()
-  })
-})
 
-// Optional: expose the CDP URL to renderers
-ipcMain.handle('get-cdp-url', async () => await resolveCdpWsUrl())
 
-// Create and show a BrowserView overlay for AI mode so backend can attach
-ipcMain.handle('ai-view-show', async (event, targetUrl) => {
-  try {
-    if (!mainWindow) return { ok: false, error: 'no-window' }
-    aiViewActive = true
-    if (!aiView) {
-      aiView = new BrowserView({
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-          webSecurity: false
-        }
-      })
-    }
-    try { 
-      mainWindow.addBrowserView(aiView) 
-    } catch (e) {
-      console.warn('Error adding browser view:', e.message)
-    }
-    // Position over the existing browser area (matching index.html layout)
-    const bounds = mainWindow.getContentBounds()
-    const leftPaneWidth = 260 // approx navigation panel width
-    const rightPaneWidth = 360 // approx data panel width
-    const topBarHeight = 64 // title bar + url bar height
-    const x = leftPaneWidth
-    const y = topBarHeight
-    const width = Math.max(600, bounds.width - leftPaneWidth - rightPaneWidth)
-    const height = Math.max(400, bounds.height - topBarHeight)
-    aiView.setBounds({ x, y, width, height })
-    aiView.setAutoResize({ width: false, height: false })
-    // Keep target stable: block popups and disable throttling
-    try {
-      aiView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-      aiView.webContents.setBackgroundThrottling(false)
-    } catch (e) {
-      console.warn('Error configuring AI view:', e.message)
-    }
-    if (targetUrl) {
-      await aiView.webContents.loadURL(targetUrl)
-    }
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, error: String(error) }
-  }
-})
-
-ipcMain.handle('ai-view-hide', async () => {
-  try {
-    aiViewActive = false
-    if (aiView && mainWindow) {
-      mainWindow.removeBrowserView(aiView)
-      aiView.destroy()
-      aiView = null
-    }
-    return { ok: true }
-  } catch (error) {
-    return { ok: false, error: String(error) }
-  }
-})
-
-// Show extraction method dialog
-ipcMain.handle('show-extraction-dialog', async () => {
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'question',
-    title: 'Choose Extraction Method',
-    message: 'How would you like to extract data from this page?',
-    buttons: ['AI Extraction (Automatic)', 'Manual Extraction'],
-    defaultId: 0,
-    cancelId: 1,
-    detail: 'AI extraction will automatically detect and extract product information from the page. Manual extraction allows you to select specific elements.'
-  })
-  
-  return result.response === 0 ? 'ai' : 'manual'
-})
 
 // Handle protocol URL at startup (Windows)
 function handleStartupProtocol() {
@@ -633,49 +510,8 @@ app.on('before-quit', () => {
   // Clear in-memory data before quit
   extractedData = []
   templates = []
-  if (extractionWebSocket) {
-    extractionWebSocket.close()
-  }
 })
 
-// WebSocket connection for real-time extraction logs
-function initializeWebSocket() {
-  try {
-    extractionWebSocket = new WebSocket('ws://127.0.0.1:8000/ws/extraction-logs')
-    
-    extractionWebSocket.on('open', () => {
-      console.log('Connected to extraction logs WebSocket')
-    })
-    
-    extractionWebSocket.on('message', (data) => {
-      try {
-        const logData = JSON.parse(data.toString())
-        console.log('Received WebSocket log:', logData) // Debug log
-        // Send log to renderer
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          console.log('Sending log to renderer...') // Debug log
-          mainWindow.webContents.send('extraction-log', logData)
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error)
-      }
-    })
-    
-    extractionWebSocket.on('close', () => {
-      console.log('WebSocket connection closed')
-      // Reconnect after 5 seconds
-      setTimeout(initializeWebSocket, 5000)
-    })
-    
-    extractionWebSocket.on('error', (error) => {
-      console.error('WebSocket error:', error)
-    })
-  } catch (error) {
-    console.error('Failed to initialize WebSocket:', error)
-    // Retry after 5 seconds
-    setTimeout(initializeWebSocket, 5000)
-  }
-}
 
 // Auto-updater functions
 function checkForUpdates() {

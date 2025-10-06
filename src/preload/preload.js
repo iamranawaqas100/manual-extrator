@@ -10,21 +10,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteExtractedData: (id) => ipcRenderer.invoke('delete-extracted-data', id),
   exportData: (format) => ipcRenderer.invoke('export-data', format),
 
-  // AI extraction
-  aiExtract: (url) => ipcRenderer.invoke('ai-extract', url),
-  getCdpUrl: () => ipcRenderer.invoke('get-cdp-url'),
-  aiViewShow: (url) => ipcRenderer.invoke('ai-view-show', url),
-  aiViewHide: () => ipcRenderer.invoke('ai-view-hide'),
-  showExtractionDialog: () => ipcRenderer.invoke('show-extraction-dialog'),
-
   // Menu event listeners
   onMenuNewExtraction: (callback) => ipcRenderer.on('menu-new-extraction', callback),
   onMenuExportData: (callback) => ipcRenderer.on('menu-export-data', callback),
   onMenuClearData: (callback) => ipcRenderer.on('menu-clear-data', callback),
   onMenuFindSimilar: (callback) => ipcRenderer.on('menu-find-similar', callback),
-  
-  // Extraction log events
-  onExtractionLog: (callback) => ipcRenderer.on('extraction-log', callback),
 
   // Browser view communication
   sendToBrowser: (channel, data) => ipcRenderer.send('send-to-browser', channel, data),
