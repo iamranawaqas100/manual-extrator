@@ -1,106 +1,174 @@
-// Login page functionality
-class LoginApp {
-    constructor() {
-        this.setupEventListeners()
-    }
+/**
+ * Login Page
+ * Browser-compatible functional approach
+ *
+ * @ts-nocheck - Browser-compatible file without Node.js types
+ */
 
-    setupEventListeners() {
-        const loginForm = document.getElementById('loginForm')
-        loginForm.addEventListener('submit', (e) => this.handleLogin(e))
-        
-        // Auto-focus username field
-        document.getElementById('username').focus()
-    }
+// Utility Functions
+const getElement = (id) => document.getElementById(id);
+const getValue = (element) => (element ? element.value : '');
+const isEmpty = (str) => !str || str.trim().length === 0;
+const addClass = (element, className) => element?.classList.add(className);
+const removeClass = (element, className) => element?.classList.remove(className);
+const addListener = (element, event, handler, options = {}) => {
+  if (!element) return () => {};
+  element.addEventListener(event, handler, options);
+  return () => element.removeEventListener(event, handler, options);
+};
 
-    async handleLogin(e) {
-        e.preventDefault()
-        
-        const username = document.getElementById('username').value.trim()
-        const password = document.getElementById('password').value
-        
-        if (!username || !password) {
-            this.showError('Please enter both username and password')
-            return
-        }
-        
-        // Show loading state
-        const loginBtn = document.querySelector('.login-btn')
-        loginBtn.classList.add('loading')
-        loginBtn.disabled = true
-        
-        // Clear any existing messages
-        this.clearMessages()
-        
-        // Simulate authentication (in real app, this would call an API)
-        setTimeout(async () => {
-            // Check demo credentials or any valid user
-            if ((username === 'demo' && password === 'demo123') || 
-                (username === 'admin' && password === 'admin123') ||
-                (username === 'collector' && password === 'collector123')) {
-                
-                // Store auth info
-                localStorage.setItem('isAuthenticated', 'true')
-                localStorage.setItem('username', username)
-                localStorage.setItem('loginTime', new Date().toISOString())
-                
-                this.showSuccess('Login successful! Redirecting...')
-                
-                // Redirect to main app after short delay
-                setTimeout(() => {
-                    window.location.href = 'index.html'
-                }, 1000)
-            } else {
-                this.showError('Invalid username or password')
-                loginBtn.classList.remove('loading')
-                loginBtn.disabled = false
-            }
-        }, 1000)
-    }
+/**
+ * Clear messages
+ */
+const clearMessages = () => {
+  const messages = document.querySelectorAll('.error-message, .success-message');
+  messages.forEach((msg) => msg.remove());
+};
 
-    showError(message) {
-        this.clearMessages()
-        const errorDiv = document.createElement('div')
-        errorDiv.className = 'error-message'
-        errorDiv.textContent = message
-        document.querySelector('.login-form').appendChild(errorDiv)
-    }
+/**
+ * Show error message
+ */
+const showError = (message) => {
+  clearMessages();
 
-    showSuccess(message) {
-        this.clearMessages()
-        const successDiv = document.createElement('div')
-        successDiv.className = 'success-message'
-        successDiv.textContent = message
-        document.querySelector('.login-form').appendChild(successDiv)
-    }
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'error-message';
+  errorDiv.textContent = message;
 
-    clearMessages() {
-        const messages = document.querySelectorAll('.error-message, .success-message')
-        messages.forEach(msg => msg.remove())
-    }
-}
+  const form = document.querySelector('.login-form');
+  if (form) form.appendChild(errorDiv);
+};
 
-// Initialize login app when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    new LoginApp()
-    
-    // Check if already authenticated
-    if (localStorage.getItem('isAuthenticated') === 'true') {
-        // Check if login is still valid (e.g., within 24 hours)
-        const loginTime = localStorage.getItem('loginTime')
-        if (loginTime) {
-            const timeDiff = new Date() - new Date(loginTime)
-            const hoursDiff = timeDiff / (1000 * 60 * 60)
-            
-            if (hoursDiff < 24) {
-                // Still valid, redirect to main app
-                window.location.href = 'index.html'
-                return
-            }
-        }
-        
-        // Clear expired auth
-        localStorage.removeItem('isAuthenticated')
-        localStorage.removeItem('username')
-        localStorage.removeItem('loginTime')
+/**
+ * Show success message
+ */
+const showSuccess = (message) => {
+  clearMessages();
+
+  const successDiv = document.createElement('div');
+  successDiv.className = 'success-message';
+  successDiv.textContent = message;
+
+  const form = document.querySelector('.login-form');
+  if (form) form.appendChild(successDiv);
+};
+
+/**
+ * Validate credentials
+ */
+const validateCredentials = (username, password) => {
+  const validUsers = [
+    { username: 'demo', password: 'demo123' },
+    { username: 'admin', password: 'admin123' },
+    { username: 'collector', password: 'collector123' },
+  ];
+
+  return validUsers.some((user) => user.username === username && user.password === password);
+};
+
+/**
+ * Store auth session
+ */
+const storeAuth = (username) => {
+  localStorage.setItem('isAuthenticated', 'true');
+  localStorage.setItem('username', username);
+  localStorage.setItem('loginTime', new Date().toISOString());
+};
+
+/**
+ * Handle login
+ */
+const handleLogin = async (e) => {
+  e.preventDefault();
+
+  const usernameInput = getElement('username');
+  const passwordInput = getElement('password');
+  const loginBtn = document.querySelector('.login-btn');
+
+  const username = getValue(usernameInput).trim();
+  const password = getValue(passwordInput);
+
+  if (isEmpty(username) || isEmpty(password)) {
+    showError('Please enter both username and password');
+    return;
+  }
+
+  // Show loading state
+  addClass(loginBtn, 'loading');
+  loginBtn.disabled = true;
+  clearMessages();
+
+  // Simulate authentication
+  setTimeout(() => {
+    if (validateCredentials(username, password)) {
+      storeAuth(username);
+      showSuccess('Login successful! Redirecting...');
+
+      setTimeout(() => {
+        window.location.href = 'index.html';
+      }, 1000);
+    } else {
+      showError('Invalid username or password');
+      removeClass(loginBtn, 'loading');
+      loginBtn.disabled = false;
     }
-})
+  }, 1000);
+};
+
+/**
+ * Check if already authenticated
+ */
+const checkExistingAuth = () => {
+  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+  const loginTime = localStorage.getItem('loginTime');
+
+  if (!isAuthenticated || !loginTime) {
+    return false;
+  }
+
+  const timeDiff = new Date() - new Date(loginTime);
+  const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+  if (hoursDiff < 24) {
+    window.location.href = 'index.html';
+    return true;
+  }
+
+  // Clear expired auth
+  localStorage.removeItem('isAuthenticated');
+  localStorage.removeItem('username');
+  localStorage.removeItem('loginTime');
+
+  return false;
+};
+
+/**
+ * Initialize login page
+ */
+const initializeLogin = () => {
+  console.log('Initializing login page...');
+
+  // Check existing auth
+  if (checkExistingAuth()) {
+    return;
+  }
+
+  // Setup form submission
+  const loginForm = getElement('loginForm');
+  if (loginForm) {
+    addListener(loginForm, 'submit', handleLogin);
+  }
+
+  // Auto-focus username field
+  const usernameInput = getElement('username');
+  if (usernameInput) {
+    usernameInput.focus();
+  }
+
+  console.log('Login page initialized');
+};
+
+/**
+ * Initialize when DOM is ready
+ */
+document.addEventListener('DOMContentLoaded', initializeLogin);
